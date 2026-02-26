@@ -2,7 +2,7 @@
 
 Ru version 2.2046
 
-Ссылка на файлы:
+Ссылка на файлы: https://drive.google.com/drive/folders/1VHeD33ypxxY8N1vaS2iDCWH-gK5VvTUB?usp=sharing
 
 ЭТО НЕ ЧИСТЫЙ КЛИЕНТ
 
