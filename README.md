@@ -8,7 +8,7 @@ Ru version 2.2046
 
 ФАЙЛ СОДЕРЖИТ ЛОГИ
 
-БАЗА ДАННЫХ НЕПОЛНАЯ
+БАЗА ДАННЫХ+СЕРВЕР ВЗЯТЫ И ПРЕНАДЛЕЖАТ:https://forum.ragezone.com/threads/dragon-knight-online-%E9%BE%99%E9%AA%91%E5%A3%ABonline-%E9%BE%99%E9%AA%91%E5%A3%ABol.1258600/ 
 
 
 Данная версия является русским релизом.
