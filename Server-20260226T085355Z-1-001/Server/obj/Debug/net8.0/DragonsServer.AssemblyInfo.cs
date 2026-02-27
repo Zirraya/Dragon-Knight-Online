@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DragonsServer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a3e7699f489821023d8a884c60370d18874a6a7b")]
 [assembly: System.Reflection.AssemblyProductAttribute("DragonsServer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DragonsServer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
