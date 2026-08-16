@@ -1,0 +1,6 @@
+C:\projects\Dragon-Knight-Online\Server-20260226T085355Z-1-001\Server\obj\Release\net8.0\DragonsServer.csproj.AssemblyReference.cache
+C:\projects\Dragon-Knight-Online\Server-20260226T085355Z-1-001\Server\obj\Release\net8.0\DragonsServer.GeneratedMSBuildEditorConfig.editorconfig
+C:\projects\Dragon-Knight-Online\Server-20260226T085355Z-1-001\Server\obj\Release\net8.0\DragonsServer.AssemblyInfoInputs.cache
+C:\projects\Dragon-Knight-Online\Server-20260226T085355Z-1-001\Server\obj\Release\net8.0\DragonsServer.AssemblyInfo.cs
+C:\projects\Dragon-Knight-Online\Server-20260226T085355Z-1-001\Server\obj\Release\net8.0\DragonsServer.csproj.CoreCompileInputs.cache
+C:\projects\Dragon-Knight-Online\Server-20260226T085355Z-1-001\Server\obj\Release\net8.0\DragonsServer.sourcelink.json
