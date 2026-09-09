@@ -1,0 +1,172 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\ClientSession.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DragonKnightServer\\ClientSession.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\LoginHandler.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DragonKnightServer\\LoginHandler.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\Opcode.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DragonKnightServer\\Opcode.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\Program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DragonKnightServer\\Program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\AccountRepository.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DragonKnightServer\\AccountRepository.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\PacketReader.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DragonKnightServer\\PacketReader.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\PacketWriter.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DragonKnightServer\\PacketWriter.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\Database.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DragonKnightServer\\Database.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\DragonKnightServer.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DragonKnightServer\\DragonKnightServer.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 4,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "PacketWriter.cs",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\PacketWriter.cs",
+              "RelativeDocumentMoniker": "DragonKnightServer\\PacketWriter.cs",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\PacketWriter.cs",
+              "RelativeToolTip": "DragonKnightServer\\PacketWriter.cs",
+              "ViewState": "AgIAAB0AAAAAAAAAAAAcwDgAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-08-17T10:32:09Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "PacketReader.cs",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\PacketReader.cs",
+              "RelativeDocumentMoniker": "DragonKnightServer\\PacketReader.cs",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\PacketReader.cs",
+              "RelativeToolTip": "DragonKnightServer\\PacketReader.cs",
+              "ViewState": "AgIAABMAAAAAAAAAAAAkwDQAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-08-17T10:31:21.466Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "AccountRepository.cs",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\AccountRepository.cs",
+              "RelativeDocumentMoniker": "DragonKnightServer\\AccountRepository.cs",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\AccountRepository.cs",
+              "RelativeToolTip": "DragonKnightServer\\AccountRepository.cs",
+              "ViewState": "AgIAABsAAAAAAAAAAAAkwDwAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-08-17T10:30:42.006Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "Opcode.cs",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\Opcode.cs",
+              "RelativeDocumentMoniker": "DragonKnightServer\\Opcode.cs",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\Opcode.cs",
+              "RelativeToolTip": "DragonKnightServer\\Opcode.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAATAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-08-17T10:20:03.231Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "ClientSession.cs",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\ClientSession.cs",
+              "RelativeDocumentMoniker": "DragonKnightServer\\ClientSession.cs",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\ClientSession.cs",
+              "RelativeToolTip": "DragonKnightServer\\ClientSession.cs",
+              "ViewState": "AgIAAIAAAAAAAAAAAAAcwIkAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-08-17T10:18:12.758Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "LoginHandler.cs",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\LoginHandler.cs",
+              "RelativeDocumentMoniker": "DragonKnightServer\\LoginHandler.cs",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\LoginHandler.cs",
+              "RelativeToolTip": "DragonKnightServer\\LoginHandler.cs",
+              "ViewState": "AgIAAAQAAAAAAAAAAAAcwBEAAAAMAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-08-17T10:16:41.848Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "Database.cs",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\Database.cs",
+              "RelativeDocumentMoniker": "DragonKnightServer\\Database.cs",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\Database.cs",
+              "RelativeToolTip": "DragonKnightServer\\Database.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAQAAAAcAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-08-17T09:56:00.289Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\Program.cs",
+              "RelativeDocumentMoniker": "DragonKnightServer\\Program.cs",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\Program.cs",
+              "RelativeToolTip": "DragonKnightServer\\Program.cs",
+              "ViewState": "AgIAAAEAAAAAAAAAAAAkwCIAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-08-17T09:51:40.221Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "DragonKnightServer.csproj",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\DragonKnightServer.csproj",
+              "RelativeDocumentMoniker": "DragonKnightServer\\DragonKnightServer.csproj",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\DragonKnightServer.csproj",
+              "RelativeToolTip": "DragonKnightServer\\DragonKnightServer.csproj",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAgwA4AAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2026-08-17T10:09:07.332Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
