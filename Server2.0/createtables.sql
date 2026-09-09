@@ -1,3 +1,8 @@
+-- Database.cs подключается к схеме `dragonknightonline`, но раньше её никто не создавал.
+CREATE DATABASE IF NOT EXISTS dragonknightonline
+    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE dragonknightonline;
+
 CREATE TABLE accounts
 (
     id INT AUTO_INCREMENT PRIMARY KEY,

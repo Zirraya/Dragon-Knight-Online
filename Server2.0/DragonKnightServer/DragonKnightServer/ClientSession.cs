@@ -36,12 +36,13 @@ public class ClientSession
         }
     }
 
-    // ТОЧНОЕ ПРИВЕТСТВИЕ из дампа (31 байт)
+    // ПРИВЕТСТВИЕ из дампа (31 байт). Реальный payload в текстовых логах отсутствует —
+    // здесь только правильная длина в BIG-ENDIAN (00 1F). Содержимое нужно снять из дампа.
     public async Task SendHandshake()
     {
         byte[] handshake = new byte[]
         {
-            0x1F, 0x00, // длина 31
+            0x00, 0x1F, // длина 31 (big-endian)
             0x00, 0x00, // unknown
             0x01, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00,
@@ -62,8 +63,8 @@ public class ClientSession
 
         using var ms = new MemoryStream();
 
-        ms.Write(BitConverter.GetBytes((ushort)0), 0, 2); // длина
-        ms.Write(BitConverter.GetBytes((ushort)0x0065), 0, 2); // opcode ServerList
+        ms.Write(new byte[] { 0, 0 }, 0, 2);      // длина (big-endian, заполним в конце)
+        ms.WriteByte(0x00); ms.WriteByte(0x65);   // opcode ServerList (big-endian)
 
         ms.WriteByte(1); // количество серверов
         ms.WriteByte(0); // ID сервера
@@ -92,8 +93,8 @@ public class ClientSession
 
         var packet = ms.ToArray();
         ushort len = (ushort)packet.Length;
-        packet[0] = (byte)(len & 0xFF);
-        packet[1] = (byte)((len >> 8) & 0xFF);
+        packet[0] = (byte)((len >> 8) & 0xFF); // big-endian
+        packet[1] = (byte)(len & 0xFF);
 
         await Send(packet);
     }
@@ -118,6 +119,34 @@ public class ClientSession
         await Send(response);
     }
 
+    private async Task Dispatch(byte[] packet, int size)
+    {
+        if (size == 2)
+        {
+            Console.WriteLine("Heartbeat (2 байта)");
+            return;
+        }
+
+        ushort opcode = (ushort)((packet[2] << 8) | packet[3]); // big-endian
+        Console.WriteLine($"Длина пакета: {size}, Opcode: 0x{opcode:X4}");
+
+        switch (opcode)
+        {
+            case (ushort)Opcode.Heartbeat:
+                Console.WriteLine("Heartbeat получен");
+                break;
+
+            case (ushort)Opcode.Login:
+                Console.WriteLine("Login пакет получен!");
+                await LoginHandler.Handle(this, packet, size);
+                break;
+
+            default:
+                Console.WriteLine($"Неизвестный opcode: 0x{opcode:X4}");
+                break;
+        }
+    }
+
     public async Task Run()
     {
         Console.WriteLine($"Клиент подключился: {client.Client.RemoteEndPoint}");
@@ -127,41 +156,44 @@ public class ClientSession
             await SendHandshake();
             Console.WriteLine("Handshake отправлен");
 
+            // TCP — это поток, а не сообщения. Один ReadAsync может принести половину
+            // пакета или сразу несколько (в дампе сервер шлёт десятки сегментов подряд).
+            // Поэтому копим байты и нарезаем их по длине из заголовка (big-endian).
+            int have = 0;
             while (client.Connected)
             {
-                int size = await stream.ReadAsync(buffer, 0, buffer.Length);
-
-                if (size <= 0)
+                int read = await stream.ReadAsync(buffer, have, buffer.Length - have);
+                if (read <= 0)
                     break;
 
-                Console.WriteLine($"Получено {size} байт");
+                have += read;
+                Console.WriteLine($"Получено {read} байт (в буфере {have})");
 
-                if (size >= 4)
+                int consumed = 0;
+                while (have - consumed >= 2)
                 {
-                    ushort packetLen = (ushort)(buffer[0] | (buffer[1] << 8));
-                    ushort opcode = (ushort)(buffer[2] | (buffer[3] << 8));
+                    // длина всего пакета в BIG-ENDIAN
+                    ushort packetLen = (ushort)((buffer[consumed] << 8) | buffer[consumed + 1]);
 
-                    Console.WriteLine($"Длина пакета: {packetLen}, Opcode: 0x{opcode:X4}");
-
-                    switch (opcode)
+                    if (packetLen < 2 || packetLen > buffer.Length)
                     {
-                        case (ushort)Opcode.Heartbeat:
-                            Console.WriteLine("Heartbeat получен");
-                            break;
-
-                        case (ushort)Opcode.Login:
-                            Console.WriteLine("Login пакет получен!");
-                            await LoginHandler.Handle(this, buffer);
-                            break;
-
-                        default:
-                            Console.WriteLine($"Неизвестный opcode: 0x{opcode:X4}");
-                            break;
+                        Console.WriteLine($"Некорректная длина пакета: {packetLen}, разрыв соединения");
+                        return;
                     }
+                    if (have - consumed < packetLen)
+                        break; // пакет пришёл не целиком — ждём остаток
+
+                    var slice = new byte[packetLen];
+                    Array.Copy(buffer, consumed, slice, 0, packetLen);
+                    await Dispatch(slice, packetLen);
+                    consumed += packetLen;
                 }
-                else if (size == 2)
+
+                // сдвигаем «хвост» (недочитанный пакет) в начало буфера
+                if (consumed > 0)
                 {
-                    Console.WriteLine("Heartbeat (2 байта)");
+                    Array.Copy(buffer, consumed, buffer, 0, have - consumed);
+                    have -= consumed;
                 }
             }
         }

@@ -39,16 +39,18 @@ public class AccountRepository
                 }
             }
 
-            // Создаем нового пользователя
+            // Создаем нового пользователя (авто-регистрация при первом входе).
             reader.Close();
-            cmd.CommandText = """
-                INSERT INTO accounts(username,password)
-                VALUES(@u,@p);
-                SELECT LAST_INSERT_ID();
-                """;
-            cmd.Parameters.AddWithValue("@p", pass);
 
-            int newId = Convert.ToInt32(cmd.ExecuteScalar());
+            // БЫЛО: "INSERT ...; SELECT LAST_INSERT_ID();" через ExecuteScalar().
+            // ExecuteScalar читает первую ячейку ПЕРВОГО результата (INSERT), а он
+            // строк не возвращает => всегда 0 => вход считался неудачным. Исправлено:
+            // делаем INSERT через ExecuteNonQuery и берём cmd.LastInsertedId.
+            cmd.CommandText = "INSERT INTO accounts(username,password) VALUES(@u,@p)";
+            cmd.Parameters.AddWithValue("@p", pass);
+            cmd.ExecuteNonQuery();
+
+            int newId = (int)cmd.LastInsertedId;
             Console.WriteLine($"Создан новый пользователь: {user} (ID: {newId})");
             return newId;
         }
