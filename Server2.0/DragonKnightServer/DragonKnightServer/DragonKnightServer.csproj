@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <PackageReference Include="MySqlConnector" Version="2.6.2" />
+    <EmbeddedResource Include="AllianceNpcs.tsv" LogicalName="AllianceNpcs.tsv" />
+    <EmbeddedResource Include="WorldCreatures.tsv" LogicalName="WorldCreatures.tsv" />
   </ItemGroup>
 
 </Project>

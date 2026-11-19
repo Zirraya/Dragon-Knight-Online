@@ -28,6 +28,8 @@ CREATE TABLE characters
     hair INT DEFAULT 0,
     face INT DEFAULT 0,
     hair_color INT DEFAULT 0,
+    wire_appearance VARBINARY(76) NULL,
+    quickbar VARBINARY(4096) NULL,
 
 
     level INT DEFAULT 1,
@@ -49,4 +51,15 @@ CREATE TABLE characters
     FOREIGN KEY(account_id)
     REFERENCES accounts(id)
     ON DELETE CASCADE
+);
+
+CREATE TABLE character_items
+(
+    character_id INT NOT NULL,
+    slot SMALLINT UNSIGNED NOT NULL,
+    item_id SMALLINT UNSIGNED NOT NULL,
+    dragon_slot TINYINT UNSIGNED NULL,
+    backpack_slot SMALLINT UNSIGNED NULL,
+    PRIMARY KEY (character_id, slot),
+    FOREIGN KEY (character_id) REFERENCES characters (id) ON DELETE CASCADE
 );

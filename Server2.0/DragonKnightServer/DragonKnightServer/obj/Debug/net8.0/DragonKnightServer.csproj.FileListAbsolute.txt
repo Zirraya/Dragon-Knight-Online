@@ -18,3 +18,8 @@ C:\projects\Dragon-Knight-Online\Server2.0\DragonKnightServer\DragonKnightServer
 C:\projects\Dragon-Knight-Online\Server2.0\DragonKnightServer\DragonKnightServer\obj\Debug\net8.0\DragonKnightServer.pdb
 C:\projects\Dragon-Knight-Online\Server2.0\DragonKnightServer\DragonKnightServer\obj\Debug\net8.0\DragonKnightServer.genruntimeconfig.cache
 C:\projects\Dragon-Knight-Online\Server2.0\DragonKnightServer\DragonKnightServer\obj\Debug\net8.0\ref\DragonKnightServer.dll
+C:\Users\lenovo\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{6707508a-02eb-4782-b046-ddb4ec8d522d}\Temp\DKLocalWorldVerification\DragonKnightServer.exe
+C:\Users\lenovo\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{6707508a-02eb-4782-b046-ddb4ec8d522d}\Temp\DKLocalWorldVerification\DragonKnightServer.deps.json
+C:\Users\lenovo\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{6707508a-02eb-4782-b046-ddb4ec8d522d}\Temp\DKLocalWorldVerification\DragonKnightServer.runtimeconfig.json
+C:\Users\lenovo\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{6707508a-02eb-4782-b046-ddb4ec8d522d}\Temp\DKLocalWorldVerification\DragonKnightServer.dll
+C:\Users\lenovo\AppData\Local\Packages\openai.codex_2p2nqsd0c76g0\AC\#!sandbox.{6707508a-02eb-4782-b046-ddb4ec8d522d}\Temp\DKLocalWorldVerification\DragonKnightServer.pdb

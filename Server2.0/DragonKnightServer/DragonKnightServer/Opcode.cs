@@ -3,25 +3,56 @@
 
 public enum Opcode : ushort
 {
-    Heartbeat = 0x0200,
-
-    // В реальном дампе (кадр 11098) после длины идёт поле 0x0010 (big-endian).
-    // Прежнее значение 0x0064 не совпадало с трафиком — из-за него пакет логина
-    // попадал в "Неизвестный opcode" и никогда не обрабатывался.
-    Login = 0x0010,
-    ServerList = 0x0065,
+    Handshake = 0x0403,
+    Login = 0x1009,
+    SelectCharacter = 0x100C,
+    ReturnToCharacterList = 0x100D,
 
     LoginSuccess = 0x000B,
 
-    CharacterList = 0x001A,
-    CreateCharacter = 0x006A,
-    CreateCharacterResult = 0x006B,
+    CharacterList = 0x140A,
+    ReturnToCharacterListResult = 0x140D,
+    CreateCharacter = 0x100E,
+    CreateCharacterResult = 0x140E,
+    DeleteCharacter = 0x100F,
+    DeleteCharacterResult = 0x140F,
 
 
-    EnterWorld = 0x0017,
+    WorldEntry = 0x140C,
+    PlayerSpawn = 0x0C0F,
+    PlayerAttributes = 0x0D92,
+    InitialPlayerState = 0x145A,
+    BackpackLayout = 0x0C78,
+    InitialInventory = 0x0D95,
+    WorldEntryStatus = 0x141E,
+    WorldEntryComplete = 0x0FB9,
+    WorldClockRequest = 0x108A,
+    WorldClock = 0x0E5A,
     WorldInfo = 0x0018,
+    MoveBackpackItem = 0x0990,
+    ClientQuickbar = 0x09AE,
+    UseSkill = 0x080D,
+    SelectTarget = 0x0811,
+    CallDragon = 0x0813,
+    SetDragonSlot = 0x0BB6,
+    RequestDragonSlots = 0x0BB7,
+    Despawn = 0x0C10,
+    SkillAction = 0x0C13,
+    SkillHit = 0x0C14,
+    AttributeChange = 0x0D93,
+    ActorDeath = 0x0D90,
+    EquipmentList = 0x0D97,
+    LearnedSkills = 0x0D99,
+    DragonLink = 0x0D31,
+    DragonUnlink = 0x0D32,
+    DragonAttributes = 0x0C2A,
+    DragonSlotResult = 0x0FB6,
+    DragonSlots = 0x0FB7,
+    MovementAction = 0x080C,
+    Turn = 0x0812,
+    PlayerPosition = 0x0C0D,
 
-    PlayerStatus = 0x0019,
+    PlayerStatus = 0x0C01,
 
-    Move = 0x0020
+    Move = 0x080B
 }

@@ -4,6 +4,16 @@ namespace DragonKnightServer.Database;
 
 public class AccountRepository
 {
+    public static bool ResetPassword(string username, string passwordHash)
+    {
+        using var db = Database.Open();
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = "UPDATE accounts SET password = @password WHERE username = @username";
+        cmd.Parameters.AddWithValue("@password", passwordHash);
+        cmd.Parameters.AddWithValue("@username", username);
+        return cmd.ExecuteNonQuery() == 1;
+    }
+
     public static int Login(string user, string pass)
     {
         if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
