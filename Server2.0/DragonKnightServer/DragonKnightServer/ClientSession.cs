@@ -188,6 +188,46 @@ public class ClientSession
                 world.SaveQuickbar(packet);
                 break;
 
+            // This client build sends a 20-byte TalkToNpc packet. Older
+            // captures contain four additional trailing bytes, so accept
+            // both layouts.
+            case (ushort)Opcode.TalkToNpc when world is not null && size >= 20:
+                await SendPackets(world.HandleNpcPacket(packet));
+                break;
+
+            // UI and world-state notifications sent by the current client.
+            // They carry no server response in the captured protocol.
+            case 0x084E when world is not null && size == 8:
+            case 0x10CB when world is not null && size == 9:
+            case 0x0992 when world is not null && size == 17:
+                break;
+
+            case (ushort)Opcode.RequestQuestMarkers when world is not null && size == 8:
+                await SendPackets(world.QuestMarkerPackets());
+                break;
+
+            case (ushort)Opcode.RequestQuestDetails when world is not null && size == 12:
+            case (ushort)Opcode.AcceptQuest when world is not null && size == 12:
+            case (ushort)Opcode.AbandonQuest when world is not null && size == 12:
+            case (ushort)Opcode.RequestQuestJournal when world is not null && size == 12:
+                await SendPackets(world.HandleQuestPacket((Opcode)opcode, packet));
+                break;
+
+            case (ushort)Opcode.RequestQuestTracking when world is not null && size == 13:
+                await SendPackets(world.HandleQuestPacket(Opcode.RequestQuestDetails, packet));
+                break;
+
+            case (ushort)Opcode.RequestShopBuyback when world is not null && size == 20:
+                break;
+
+            case (ushort)Opcode.CompleteQuest when world is not null && size == 14:
+                await SendPackets(world.HandleQuestPacket(Opcode.CompleteQuest, packet));
+                break;
+
+            case (ushort)Opcode.BuyFromNpc when world is not null && size == 19:
+                await SendPackets(world.BuyFromDragonEnvoy(packet));
+                break;
+
             default:
                 Console.WriteLine($"Неизвестный opcode: 0x{opcode:X4}");
                 break;

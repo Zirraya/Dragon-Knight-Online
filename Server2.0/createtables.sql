@@ -30,6 +30,8 @@ CREATE TABLE characters
     hair_color INT DEFAULT 0,
     wire_appearance VARBINARY(76) NULL,
     quickbar VARBINARY(4096) NULL,
+    silver INT NOT NULL DEFAULT 0,
+    starter_egg_granted BOOLEAN NOT NULL DEFAULT FALSE,
 
 
     level INT DEFAULT 1,
@@ -60,6 +62,17 @@ CREATE TABLE character_items
     item_id SMALLINT UNSIGNED NOT NULL,
     dragon_slot TINYINT UNSIGNED NULL,
     backpack_slot SMALLINT UNSIGNED NULL,
+    quantity SMALLINT UNSIGNED NOT NULL DEFAULT 1,
     PRIMARY KEY (character_id, slot),
+    FOREIGN KEY (character_id) REFERENCES characters (id) ON DELETE CASCADE
+);
+
+CREATE TABLE character_quests
+(
+    character_id INT NOT NULL,
+    quest_id INT NOT NULL,
+    kills SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    completed BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (character_id, quest_id),
     FOREIGN KEY (character_id) REFERENCES characters (id) ON DELETE CASCADE
 );

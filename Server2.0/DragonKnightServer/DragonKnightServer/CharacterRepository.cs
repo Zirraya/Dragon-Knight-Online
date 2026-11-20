@@ -10,20 +10,24 @@ internal record WorldCharacter(int Id, string Name, int Level, int Map, int Temp
 {
     public IReadOnlyList<CharacterItem> Inventory { get; init; } = [];
     public byte[]? Quickbar { get; init; }
+    public int Silver { get; init; }
+    public IReadOnlyDictionary<int, QuestProgress> Quests { get; init; } = new Dictionary<int, QuestProgress>();
 }
 
-internal record CharacterItem(ushort Slot, ushort ItemId, byte? DragonSlot = null, ushort? BackpackSlot = null)
+internal record CharacterItem(ushort Slot, ushort ItemId, byte? DragonSlot = null, ushort? BackpackSlot = null,
+    ushort Quantity = 1)
 {
     public ushort BackpackIndex => BackpackSlot ?? Slot;
 }
 
-public class CharacterRepository
+public partial class CharacterRepository
 {
     private static readonly object SchemaLock = new();
     private static bool characterColumnsReady;
     private static bool inventoryTableReady;
     internal const ushort YoungSilverDragonItem = 58508;
     internal const ushort ElvenDragonItem = 41033;
+    internal const ushort StarterDragonEgg = 58523;
     internal const int TestLevel = 15;
 
     internal static bool Delete(string username, string characterName)
@@ -141,15 +145,21 @@ public class CharacterRepository
             return false;
 
         cmd.Parameters.RemoveAt("@limit");
+        var origin = CharacterOrigins.ForFaction(CharacterOrigins.ReadFaction(appearance));
         cmd.CommandText = """
-            INSERT INTO characters (account_id, name, class_id, wire_appearance)
-            VALUES (@accountId, @name, @template, @appearance)
+            INSERT INTO characters (account_id, name, class_id, wire_appearance, map, x, y, z)
+            VALUES (@accountId, @name, @template, @appearance, 1, @x, @y, @z)
             """;
         cmd.Parameters.AddWithValue("@template", template);
         cmd.Parameters.Add("@appearance", MySqlDbType.VarBinary).Value = appearance;
+        cmd.Parameters.AddWithValue("@x", origin.X);
+        cmd.Parameters.AddWithValue("@y", origin.Y);
+        cmd.Parameters.AddWithValue("@z", origin.Z);
         cmd.ExecuteNonQuery();
 
-        GrantStarterItems(cmd, cmd.LastInsertedId);
+        int characterId = checked((int)cmd.LastInsertedId);
+        GrantStarterItems(cmd, characterId);
+        GrantStarterEgg(cmd, characterId);
         transaction.Commit();
         return true;
     }
@@ -162,7 +172,7 @@ public class CharacterRepository
         cmd.CommandText = """
             SELECT id, name, COALESCE(level, 1), COALESCE(map, 1), COALESCE(class_id, 1),
                    wire_appearance, COALESCE(x, 100), COALESCE(y, 200), COALESCE(z, 0),
-                   COALESCE(hp, 100), COALESCE(mp, 100), COALESCE(exp, 0), quickbar
+                   COALESCE(hp, 100), COALESCE(mp, 100), COALESCE(exp, 0), quickbar, silver, starter_egg_granted
             FROM characters
             WHERE account_id = @accountId AND name = @name
             ORDER BY id
@@ -172,6 +182,7 @@ public class CharacterRepository
         cmd.Parameters.AddWithValue("@name", name);
 
         WorldCharacter character;
+        bool eggGranted;
         using (var reader = cmd.ExecuteReader())
         {
             if (!reader.Read())
@@ -182,22 +193,24 @@ public class CharacterRepository
                 reader.GetFloat(6), reader.GetFloat(7), reader.GetFloat(8),
                 reader.GetInt32(9), reader.GetInt32(10), reader.GetInt32(11))
             {
-                Quickbar = reader.IsDBNull(12) ? null : reader.GetFieldValue<byte[]>(12)
+                Quickbar = reader.IsDBNull(12) ? null : reader.GetFieldValue<byte[]>(12),
+                Silver = reader.GetInt32(13)
             };
+            eggGranted = reader.GetBoolean(14);
         }
 
         EnsureInventoryTable(db);
+        EnsureQuestTable(db);
         GrantStarterItems(cmd, character.Id);
-        cmd.Parameters.Clear();
-        cmd.CommandText = "SELECT slot, item_id, dragon_slot, backpack_slot FROM character_items WHERE character_id = @id ORDER BY slot";
-        cmd.Parameters.AddWithValue("@id", character.Id);
-        var inventory = new List<CharacterItem>();
-        using var items = cmd.ExecuteReader();
-        while (items.Read())
-            inventory.Add(new CharacterItem(items.GetUInt16(0), items.GetUInt16(1),
-                items.IsDBNull(2) ? null : items.GetByte(2), items.IsDBNull(3) ? null : items.GetUInt16(3)));
-
-        return character with { Inventory = inventory };
+        if (!eggGranted)
+        {
+            using var transaction = db.BeginTransaction();
+            cmd.Transaction = transaction;
+            GrantStarterEgg(cmd, character.Id);
+            transaction.Commit();
+            cmd.Transaction = null;
+        }
+        return character with { Inventory = ReadInventory(cmd, character.Id), Quests = ReadQuests(cmd, character.Id) };
     }
 
     internal static bool TrySaveQuickbar(int characterId, byte[] data)
@@ -226,26 +239,10 @@ public class CharacterRepository
             using var transaction = db.BeginTransaction();
             using var cmd = db.CreateCommand();
             cmd.Transaction = transaction;
-            cmd.CommandText = """
-                SELECT slot, COALESCE(backpack_slot, slot) FROM character_items
-                WHERE character_id = @id FOR UPDATE
-                """;
-            cmd.Parameters.AddWithValue("@id", characterId);
-            ushort? currentSource = null;
-            ushort? currentTarget = null;
-            using (var reader = cmd.ExecuteReader())
-            {
-                while (reader.Read())
-                {
-                    ushort location = reader.GetUInt16(1);
-                    if (location == source.BackpackIndex)
-                        currentSource = reader.GetUInt16(0);
-                    if (location == destination)
-                        currentTarget = reader.GetUInt16(0);
-                }
-            }
-
-            if (currentSource != source.Slot || currentTarget != target?.Slot)
+            var items = ReadInventory(cmd, characterId, forUpdate: true);
+            var currentSource = items.Find(item => item.BackpackIndex == source.BackpackIndex);
+            var currentTarget = items.Find(item => item.BackpackIndex == destination);
+            if (currentSource != source || currentTarget != target)
                 return false;
 
             // Ячейки меняются в одной транзакции, ключи экземпляров остаются прежними.
@@ -267,6 +264,117 @@ public class CharacterRepository
             Console.WriteLine($"Не удалось переместить предмет персонажа {characterId}. Код MySQL {ex.Number}.");
             return false;
         }
+    }
+
+    internal static CharacterItem? TryStoreLoot(int characterId, LootDrop drop, int capacity)
+    {
+        try
+        {
+            using var db = Database.Open();
+            using var transaction = db.BeginTransaction();
+            using var cmd = db.CreateCommand();
+            cmd.Transaction = transaction;
+            var items = ReadInventory(cmd, characterId, forUpdate: true);
+            var stack = items.Find(item => item.ItemId == drop.ItemId && item.Quantity < drop.StackLimit);
+            if (stack is not null)
+            {
+                stack = stack with { Quantity = (ushort)(stack.Quantity + 1) };
+                UpdateItemQuantity(cmd, characterId, stack);
+            }
+            else
+            {
+                var occupied = items.Select(item => item.BackpackIndex).ToHashSet();
+                int cell = Enumerable.Range(0, capacity).FirstOrDefault(index => !occupied.Contains((ushort)index), -1);
+                if (cell < 0)
+                {
+                    Console.WriteLine($"Рюкзак персонажа {characterId} заполнен. Предмет {drop.ItemId} не помещается.");
+                    return null;
+                }
+                stack = InsertBackpackItem(cmd, characterId, items, drop.ItemId, (ushort)cell, 1);
+            }
+
+            transaction.Commit();
+            return stack;
+        }
+        catch (MySqlException ex)
+        {
+            Console.WriteLine($"Не удалось сохранить добычу персонажа {characterId}. Код MySQL {ex.Number}.");
+            return null;
+        }
+    }
+
+    internal static CharacterItem? TrySplitBackpackStack(int characterId, CharacterItem source, ushort destination,
+        ushort quantity)
+    {
+        if (quantity == 0 || quantity >= source.Quantity)
+            return null;
+
+        try
+        {
+            using var db = Database.Open();
+            using var transaction = db.BeginTransaction();
+            using var cmd = db.CreateCommand();
+            cmd.Transaction = transaction;
+            var items = ReadInventory(cmd, characterId, forUpdate: true);
+            if (!items.Contains(source) || items.Exists(item => item.BackpackIndex == destination))
+                return null;
+
+            var split = InsertBackpackItem(cmd, characterId, items, source.ItemId, destination, quantity);
+            UpdateItemQuantity(cmd, characterId, source with { Quantity = (ushort)(source.Quantity - quantity) });
+            transaction.Commit();
+            return split;
+        }
+        catch (MySqlException ex)
+        {
+            Console.WriteLine($"Не удалось разделить стопку персонажа {characterId}. Код MySQL {ex.Number}.");
+            return null;
+        }
+    }
+
+    private static List<CharacterItem> ReadInventory(MySqlCommand cmd, int characterId, bool forUpdate = false)
+    {
+        cmd.Parameters.Clear();
+        cmd.CommandText = """
+            SELECT slot, item_id, dragon_slot, backpack_slot, quantity
+            FROM character_items WHERE character_id = @id ORDER BY slot
+            """ + (forUpdate ? " FOR UPDATE" : "");
+        cmd.Parameters.AddWithValue("@id", characterId);
+        using var reader = cmd.ExecuteReader();
+        var items = new List<CharacterItem>();
+        while (reader.Read())
+            items.Add(new CharacterItem(reader.GetUInt16(0), reader.GetUInt16(1),
+                reader.IsDBNull(2) ? null : reader.GetByte(2), reader.IsDBNull(3) ? null : reader.GetUInt16(3),
+                reader.GetUInt16(4)));
+        return items;
+    }
+
+    private static CharacterItem InsertBackpackItem(MySqlCommand cmd, int characterId, List<CharacterItem> items,
+        ushort itemId, ushort destination, ushort quantity)
+    {
+        var usedIds = items.Select(item => item.Slot).ToHashSet();
+        ushort slot = (ushort)Enumerable.Range(2, ushort.MaxValue - 1).First(id => !usedIds.Contains((ushort)id));
+        cmd.Parameters.Clear();
+        cmd.CommandText = """
+            INSERT INTO character_items (character_id, slot, item_id, backpack_slot, quantity)
+            VALUES (@id, @slot, @item, @destination, @quantity)
+            """;
+        cmd.Parameters.AddWithValue("@id", characterId);
+        cmd.Parameters.AddWithValue("@slot", slot);
+        cmd.Parameters.AddWithValue("@item", itemId);
+        cmd.Parameters.AddWithValue("@destination", destination);
+        cmd.Parameters.AddWithValue("@quantity", quantity);
+        cmd.ExecuteNonQuery();
+        return new CharacterItem(slot, itemId, BackpackSlot: destination, Quantity: quantity);
+    }
+
+    private static void UpdateItemQuantity(MySqlCommand cmd, int characterId, CharacterItem item)
+    {
+        cmd.Parameters.Clear();
+        cmd.CommandText = "UPDATE character_items SET quantity = @quantity WHERE character_id = @id AND slot = @slot";
+        cmd.Parameters.AddWithValue("@id", characterId);
+        cmd.Parameters.AddWithValue("@slot", item.Slot);
+        cmd.Parameters.AddWithValue("@quantity", item.Quantity);
+        cmd.ExecuteNonQuery();
     }
 
     internal static bool SaveDragonSlot(int characterId, CharacterItem item)
@@ -322,6 +430,7 @@ public class CharacterRepository
                     item_id SMALLINT UNSIGNED NOT NULL,
                     dragon_slot TINYINT UNSIGNED NULL,
                     backpack_slot SMALLINT UNSIGNED NULL,
+                    quantity SMALLINT UNSIGNED NOT NULL DEFAULT 1,
                     PRIMARY KEY (character_id, slot),
                     FOREIGN KEY (character_id) REFERENCES characters (id) ON DELETE CASCADE
                 )
@@ -329,6 +438,7 @@ public class CharacterRepository
             cmd.ExecuteNonQuery();
             EnsureColumn(db, "character_items", "dragon_slot", "TINYINT UNSIGNED NULL");
             EnsureColumn(db, "character_items", "backpack_slot", "SMALLINT UNSIGNED NULL");
+            EnsureColumn(db, "character_items", "quantity", "SMALLINT UNSIGNED NOT NULL DEFAULT 1");
             inventoryTableReady = true;
         }
     }
@@ -342,6 +452,8 @@ public class CharacterRepository
 
             EnsureColumn(db, "characters", "wire_appearance", "VARBINARY(76) NULL");
             EnsureColumn(db, "characters", "quickbar", "VARBINARY(4096) NULL");
+            EnsureColumn(db, "characters", "silver", "INT NOT NULL DEFAULT 0");
+            EnsureColumn(db, "characters", "starter_egg_granted", "BOOLEAN NOT NULL DEFAULT FALSE");
             characterColumnsReady = true;
         }
     }

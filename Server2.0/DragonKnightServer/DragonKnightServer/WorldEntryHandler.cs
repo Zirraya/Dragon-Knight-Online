@@ -22,7 +22,7 @@ internal static class WorldEntryHandler
         }
 
         var world = new WorldSession(character);
-        await client.SendPackets([.. WorldPackets.CreateEntry(character), .. world.UpdateNearbyWorldActors()], enteringWorld: true);
+        await client.SendPackets([.. WorldPackets.CreateEntry(character), .. world.UpdateNearbyWorldActors(), .. world.QuestStatePackets()], enteringWorld: true);
         Console.WriteLine($"Отправлена загрузка карты {character.Map} для персонажа {character.Name}.");
         return world;
     }

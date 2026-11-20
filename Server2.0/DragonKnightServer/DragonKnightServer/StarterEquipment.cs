@@ -10,6 +10,8 @@ internal static class StarterEquipment
         [new(1, 490), new(2, 491), new(3, 493), new(4, 492), new(6, 398)];
     private static readonly CharacterItem[] Wanderer =
         [new(1, 495), new(2, 496), new(3, 498), new(4, 497), new(6, 396), new(7, 395)];
+    private static readonly CharacterItem[] FemaleWanderer =
+        [new(1, 500), new(2, 501), new(3, 502), new(4, 503), new(6, 396), new(7, 395)];
     private static readonly CharacterItem[] Mage =
         [new(1, 24001), new(2, 25001), new(3, 27001), new(4, 26001), new(6, 397)];
     private static readonly CharacterItem[] Priest =
@@ -19,7 +21,8 @@ internal static class StarterEquipment
     {
         1 or 6 => Paladin,
         2 or 7 => Warrior,
-        3 or 8 => Wanderer,
+        3 => Wanderer,
+        8 => FemaleWanderer,
         4 or 9 => Mage,
         5 or 10 => Priest,
         _ => []

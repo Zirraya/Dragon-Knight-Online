@@ -4,7 +4,7 @@ using DragonKnightServer.Protocol;
 
 namespace DragonKnightServer;
 
-internal sealed class WorldSession(WorldCharacter character)
+internal sealed partial class WorldSession(WorldCharacter character)
 {
     private const int SpawnDistance = 12_000;
     private const int DespawnDistance = 15_000;
@@ -12,14 +12,16 @@ internal sealed class WorldSession(WorldCharacter character)
     private readonly Dictionary<int, CreatureSpawn> visibleCreatures = [];
     private readonly Dictionary<int, int> injuredCreatures = [];
     private readonly Dictionary<int, (CreatureSpawn Spawn, long CorpseUntil, long RespawnAt)> defeatedCreatures = [];
-    private readonly IReadOnlyList<AllianceNpc> allianceNpcs = AlliancePopulation.ForMap(character.Map);
-    private readonly HashSet<int> visibleAllianceNpcs = [];
+    private readonly IReadOnlyList<WorldNpc> npcs = NpcPopulation.ForMap(character.Map);
+    private readonly HashSet<int> visibleNpcs = [];
     private readonly Dictionary<ushort, CharacterItem> inventory = character.Inventory.ToDictionary(item => item.Slot);
     private byte[]? quickbar = character.Quickbar;
     private CharacterItem? companion;
     private ushort? pendingBattleDragonSlot;
     private bool positionChanged;
     private bool moving;
+    private readonly Dictionary<int, QuestProgress> quests = character.Quests.ToDictionary(pair => pair.Key, pair => pair.Value);
+    private readonly ushort faction = CharacterOrigins.ReadFaction(character.Appearance ?? []);
     private int DragonId => (IsMounted ? 0x007A0000 : 0x007B0000) + character.Id;
     private bool IsMounted => companion?.ItemId == CharacterRepository.ElvenDragonItem;
     internal Task? BattleDragonCastDelay { get; private set; }
@@ -53,21 +55,21 @@ internal sealed class WorldSession(WorldCharacter character)
     internal IReadOnlyList<byte[]> UpdateNearbyWorldActors()
     {
         var packets = new List<byte[]>();
-        foreach (var npc in allianceNpcs)
+        foreach (var npc in npcs)
         {
-            bool visible = visibleAllianceNpcs.Contains(npc.Id);
+            bool visible = visibleNpcs.Contains(npc.Id);
             bool nearby = WithinDistance(npc.X, npc.Y, visible ? DespawnDistance : SpawnDistance);
             if (nearby == visible)
                 continue;
 
             if (nearby)
             {
-                visibleAllianceNpcs.Add(npc.Id);
-                packets.Add(WorldPackets.CreateAllianceNpcSpawn(npc));
+                visibleNpcs.Add(npc.Id);
+                packets.Add(WorldPackets.CreateNpcSpawn(npc));
             }
             else
             {
-                visibleAllianceNpcs.Remove(npc.Id);
+                visibleNpcs.Remove(npc.Id);
                 packets.Add(WorldPackets.CreateDespawn(npc.Id));
             }
         }
@@ -129,7 +131,7 @@ internal sealed class WorldSession(WorldCharacter character)
         ushort? firstIndex = ReadBackpackIndex(packet[8], BinaryPrimitives.ReadUInt16BigEndian(packet[9..]));
         ushort? secondIndex = ReadBackpackIndex(packet[11], BinaryPrimitives.ReadUInt16BigEndian(packet[12..]));
         ushort quantity = BinaryPrimitives.ReadUInt16BigEndian(packet[14..]);
-        if (firstIndex is not ushort first || secondIndex is not ushort second || first == second || quantity > 1)
+        if (firstIndex is not ushort first || secondIndex is not ushort second || first == second)
             return [];
 
         // Сетка отправляет сначала ячейку под курсором, а вкладка — сначала ячейку предмета.
@@ -142,7 +144,21 @@ internal sealed class WorldSession(WorldCharacter character)
             (source, target) = (target, source);
             (from, to) = (to, from);
         }
-        if (source is null || !CharacterRepository.TryMoveBackpackItem(character.Id, source, to, target))
+        if (source is null || quantity > source.Quantity)
+            return [];
+
+        if (quantity > 0 && quantity < source.Quantity)
+        {
+            if (target is not null || CharacterRepository.TrySplitBackpackStack(character.Id, source, to, quantity) is not { } split)
+                return [];
+
+            var remainder = source with { Quantity = (ushort)(source.Quantity - quantity) };
+            inventory[remainder.Slot] = remainder;
+            inventory[split.Slot] = split;
+            return [WorldPackets.CreateBackpackUpdate(character.Id, silver, (from, remainder), (to, split))];
+        }
+
+        if (!CharacterRepository.TryMoveBackpackItem(character.Id, source, to, target))
             return [];
 
         var moved = source with { BackpackSlot = to };
@@ -153,7 +169,7 @@ internal sealed class WorldSession(WorldCharacter character)
         if (companion is not null)
             companion = inventory[companion.Slot];
 
-        return [WorldPackets.CreateBackpackUpdate(character.Id, (from, swapped), (to, moved)), GetDragonSlots()];
+        return [WorldPackets.CreateBackpackUpdate(character.Id, silver, (from, swapped), (to, moved)), GetDragonSlots()];
     }
 
     internal void SaveQuickbar(ReadOnlySpan<byte> packet)
@@ -258,11 +274,17 @@ internal sealed class WorldSession(WorldCharacter character)
         }
 
         var skills = IsMounted ? WorldPackets.DragonSkills : GetPlayerSkills(character.Template);
-        if (actorId != character.Id || !skills.Contains(skill))
+        if ((actorId != character.Id && (!IsMounted || actorId != DragonId)) || !skills.Contains(skill))
             return [];
 
         int target = BinaryPrimitives.ReadInt32BigEndian(packet[11..]);
         if (!visibleCreatures.TryGetValue(target, out var creature) || defeatedCreatures.ContainsKey(target))
+            return [];
+
+        const int airAttackDistance = 5_000;
+        if (creature.Template.AirborneName is not null && (!IsMounted
+            || !WithinDistance(creature.Position.X, creature.Position.Y, airAttackDistance)
+            || Math.Abs((long)position.Z - creature.Position.Z) > airAttackDistance))
             return [];
 
         int remaining = injuredCreatures.GetValueOrDefault(target, creature.Template.HitPoints);
@@ -273,11 +295,21 @@ internal sealed class WorldSession(WorldCharacter character)
             injuredCreatures.Remove(target);
             long corpseUntil = Environment.TickCount64 + creature.Template.CorpseMs;
             defeatedCreatures.Add(target, (creature, corpseUntil, corpseUntil + creature.Template.RefreshMs));
+            AddQuestKill(creature.Template.Id);
         }
         else
             injuredCreatures[target] = newHealth;
 
-        return WorldPackets.CreateHit(IsMounted ? DragonId : character.Id, creature, skill, damage, newHealth);
+        var hit = WorldPackets.CreateHit(IsMounted ? DragonId : character.Id, creature, skill, damage, newHealth);
+        var questMarkers = newHealth == 0 ? QuestStatePackets() : [];
+        if (newHealth == 0 && MonsterLoot.Roll(creature.Template.Id, Random.Shared.Next(100)) is { } drop
+            && CharacterRepository.TryStoreLoot(character.Id, drop, WorldPackets.BackpackPageSize * WorldPackets.BackpackPageCount)
+                is { } storedItem)
+        {
+            inventory[storedItem.Slot] = storedItem;
+            return [.. hit, .. questMarkers, WorldPackets.CreateBackpackUpdate(character.Id, silver, (storedItem.BackpackIndex, storedItem))];
+        }
+        return [.. hit, .. questMarkers];
     }
 
     internal byte[][] CollectCreatureRespawns(long now)

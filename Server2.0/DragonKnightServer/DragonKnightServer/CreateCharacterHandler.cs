@@ -31,7 +31,7 @@ internal static class CreateCharacterHandler
         var appearance = body.Slice(sizeof(int), LoginPackets.AppearanceSize);
         body = body[(sizeof(int) + LoginPackets.AppearanceSize)..];
 
-        // После внешности идёт ещё одна строка. Карту для нового персонажа выбирает сервер.
+        // Фракция записана в первых двух байтах блока внешности, за ним идёт строка мира.
         if (string.IsNullOrWhiteSpace(name) || name.Any(char.IsControl) || template <= 0
             || !LoginPackets.TryReadString(ref body, out _) || !body.IsEmpty)
         {

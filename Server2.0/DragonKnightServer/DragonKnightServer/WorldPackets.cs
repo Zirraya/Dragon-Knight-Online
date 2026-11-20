@@ -4,7 +4,7 @@ using DragonKnightServer.Database;
 
 namespace DragonKnightServer.Protocol;
 
-internal static class WorldPackets
+internal static partial class WorldPackets
 {
     public const int MoveRequestSize = 31;
     public const byte FirstBackpackPage = 2;
@@ -57,8 +57,9 @@ internal static class WorldPackets
             }),
             Build(Opcode.InitialPlayerState, writer => WriteInitialState(writer, character)),
             .. CreateBackpackLayout(tick),
-            CreateInventory(character.Id, character.Inventory, unchecked(tick + 1)),
+            CreateInventory(character.Id, character.Silver, character.Inventory, unchecked(tick + 1)),
             CreateDragonSlots(character.Id, character.Inventory),
+            CreateEquipmentDetails(character.Id, equipment, tick),
             Build(Opcode.EquipmentList, writer => WriteEquipment(writer, character, equipment, tick)),
             CreateLearnedSkills(0, WorldSession.GetPlayerSkills(character.Template)),
             Build(Opcode.WorldEntryStatus, writer => WriteUInt16(writer, 0)),
@@ -91,11 +92,15 @@ internal static class WorldPackets
 
     public static (int X, int Y, int Z) StartingPosition(WorldCharacter character)
     {
-        // (100, 200, 0) — значения заглушки схемы для новых персонажей.
-        // Для map001 используем проверенную точку появления на существующей клиентской карте.
-        return character.Map == 1 && (character.X, character.Y, character.Z) == (100f, 200f, 0f)
-            ? (452383, 159581, 1557)
-            : ((int)character.X, (int)character.Y, (int)character.Z);
+        var savedPosition = ((int)character.X, (int)character.Y, (int)character.Z);
+        if (character.Map != 1)
+            return savedPosition;
+
+        ushort faction = CharacterOrigins.ReadFaction(character.Appearance);
+        // Старые записи могут содержать координаты из схемы или прежнюю стартовую точку Альянса.
+        return (character.X, character.Y, character.Z) == (100f, 200f, 0f)
+            || (faction == CharacterOrigins.Federation && savedPosition == CharacterOrigins.AllianceStart)
+            ? CharacterOrigins.ForFaction(faction) : savedPosition;
     }
 
     private static void WriteSpawn(BinaryWriter writer, WorldCharacter character,
@@ -107,7 +112,7 @@ internal static class WorldPackets
         WriteUInt16(writer, 90);
         writer.Write(new byte[40]);
         WriteUInt16(writer, (ushort)Math.Clamp(character.Template, 1, ushort.MaxValue));
-        WriteUInt16(writer, 1);
+        WriteUInt16(writer, CharacterOrigins.ReadFaction(character.Appearance));
 
         WriteUInt16(writer, 5);
         WriteAttribute(writer, 0, character.Level);
@@ -191,24 +196,24 @@ internal static class WorldPackets
             WriteInt32(writer, tick);
         });
 
-    private static byte[] CreateInventory(int characterId, IEnumerable<CharacterItem> inventory, int tick)
+    private static byte[] CreateInventory(int characterId, int silver, IEnumerable<CharacterItem> inventory, int tick)
     {
         var items = inventory.ToDictionary(item => item.BackpackIndex);
-        return CreateBackpackUpdate(characterId, Enumerable.Range(0, BackpackPageSize * BackpackPageCount)
+        return CreateBackpackUpdate(characterId, silver, Enumerable.Range(0, BackpackPageSize * BackpackPageCount)
             .Select(index => ((ushort)index, items.GetValueOrDefault((ushort)index))), tick);
     }
 
-    internal static byte[] CreateBackpackUpdate(int characterId, params (ushort Index, CharacterItem? Item)[] updates) =>
-        CreateBackpackUpdate(characterId, updates, Environment.TickCount);
+    internal static byte[] CreateBackpackUpdate(int characterId, int silver, params (ushort Index, CharacterItem? Item)[] updates) =>
+        CreateBackpackUpdate(characterId, silver, updates, Environment.TickCount);
 
-    private static byte[] CreateBackpackUpdate(int characterId,
+    private static byte[] CreateBackpackUpdate(int characterId, int silver,
         IEnumerable<(ushort Index, CharacterItem? Item)> updates, int tick)
     {
         var pages = updates.ToLookup(update => FirstBackpackPage + update.Index / BackpackPageSize);
-        int pageCount = pages.Max(page => page.Key) + 1;
+        int pageCount = pages.Select(page => page.Key + 1).DefaultIfEmpty().Max();
         return Build(Opcode.InitialInventory, writer =>
         {
-            WriteInt32(writer, 0);
+            WriteInt32(writer, silver);
             writer.Write((byte)pageCount);
             for (int bag = 0; bag < pageCount; bag++)
             {
@@ -229,7 +234,7 @@ internal static class WorldPackets
         if (dragonType == 0)
         {
             writer.Write((byte)0);
-            WriteInt32(writer, itemId == 0 ? 0 : 0x10000 | itemId);
+            WriteInt32(writer, item is null ? 0 : (item.Quantity << 16) | itemId);
         }
         else
         {
@@ -324,13 +329,7 @@ internal static class WorldPackets
             else
                 WriteActorVitals(writer, 15, 300, 300, 0);
 
-            writer.Write(new byte[11]);
-            LoginPackets.WriteString(writer, mounted ? "Эльфийский дракон" : "Молодой Серебряный дракон");
-            byte[] actorFlags = new byte[40];
-            actorFlags[1] = 1;
-            actorFlags[4] = 1;
-            writer.Write(actorFlags);
-            WriteInt32(writer, Environment.TickCount);
+            WriteNamedSpawnTail(writer, mounted ? "Эльфийский дракон" : "Молодой Серебряный дракон", Environment.TickCount);
         });
 
     public static byte[] CreateDragonLink(int characterId, int dragonId, bool attach = true) =>
@@ -349,6 +348,33 @@ internal static class WorldPackets
             writer.Write(new byte[6]);
             writer.Write(Environment.TickCount);
         });
+
+    private static readonly byte[] EquipmentDetailsTemplate = Convert.FromHexString(
+        "00f1000000000d9600000202001000000000010100240202000021200060c15d00000000000000000000000000000000000000000200881304006000202100020100240202000022200060a961000000000000000000000000000000000000000002008813040060002022000301002402020000232000607969000000000000000000000000000000000000000002008813040060002023000401002402020000242000609165000000000000000000000000000000000000000002008813040060002024000500000600000700000800000900000a00000b00000c00000d0000000e00000000000f00000000f4e05ebe");
+
+    private static byte[] CreateEquipmentDetails(int characterId, IReadOnlyList<CharacterItem> equipment, int tick)
+    {
+        byte[] packet = (byte[])EquipmentDetailsTemplate.Clone();
+        BinaryPrimitives.WriteInt32BigEndian(packet.AsSpan(8), characterId);
+        int[] characterOffsets = [22, 67, 112, 157];
+        int[] instanceOffsets = [26, 71, 116, 161];
+        int[] itemOffsets = [30, 75, 120, 165];
+        int[] suffixOffsets = [58, 103, 148, 193];
+        for (int i = 0; i < 4; i++)
+        {
+            ushort slot = (ushort)(i + 1);
+            int instance = 0x60000000 | ((characterId & 0x0FFFFFFF) << 4) | slot;
+            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(characterOffsets[i]), characterId);
+            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(instanceOffsets[i]), instance);
+            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(itemOffsets[i]),
+                equipment.FirstOrDefault(item => item.Slot == slot)?.ItemId ?? 0);
+            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(suffixOffsets[i]), instance);
+        }
+
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(237), tick);
+        LoginPackets.WriteHeader(packet, Opcode.EquipmentDetails);
+        return packet;
+    }
 
     public static byte[] CreateDragonSlotResult(byte bag, ushort slot, byte dragonSlot, bool remove, byte itemType,
         ushort result = 0) =>
@@ -377,7 +403,7 @@ internal static class WorldPackets
             writer.Write(Environment.TickCount);
         });
 
-    internal static byte[] CreateAllianceNpcSpawn(AllianceNpc npc) =>
+    internal static byte[] CreateNpcSpawn(WorldNpc npc) =>
         Build(Opcode.PlayerSpawn, writer =>
         {
             WriteActorAppearance(writer, npc.Id, 0x87, (npc.X, npc.Y, npc.Z), 0, npc.Template);
@@ -389,10 +415,15 @@ internal static class WorldPackets
     internal static byte[] CreateCreatureSpawn(CreatureSpawn spawn, int health) =>
         Build(Opcode.PlayerSpawn, writer =>
         {
-            WriteActorAppearance(writer, spawn.Id, 0x47, spawn.Position, 90, spawn.Template.Id);
+            string? airborneName = spawn.Template.AirborneName;
+            bool airborne = airborneName is not null;
+            WriteActorAppearance(writer, spawn.Id, airborne ? 0x26 : 0x47, spawn.Position,
+                airborne ? (ushort)0 : (ushort)90, spawn.Template.Id, airborne);
             WriteActorVitals(writer, spawn.Template.Level, health, spawn.Template.HitPoints, spawn.Template.Mana);
-            // Для короткой формы имя и модель берутся из шаблона клиента.
-            writer.Write(new byte[6]);
+            if (airborneName is not null)
+                WriteNamedSpawnTail(writer, airborneName, Environment.TickCount);
+            else
+                writer.Write(new byte[6]);
         });
 
     public static byte[] CreateBattleDragonCast(int characterId, (int X, int Y, int Z) position, byte phase) =>
@@ -452,13 +483,21 @@ internal static class WorldPackets
         });
 
     private static void WriteActorAppearance(BinaryWriter writer, int id, int flags,
-        (int X, int Y, int Z) position, ushort heading, ushort template)
+        (int X, int Y, int Z) position, ushort heading, ushort template, bool airborne = false)
     {
         WriteInt32(writer, id);
         WriteInt32(writer, flags);
         WritePosition(writer, position);
         WriteUInt16(writer, heading);
-        writer.Write(new byte[40]);
+        Span<byte> state = stackalloc byte[40];
+        state.Clear();
+        if (airborne)
+        {
+            // В захватах воздушные актёры 0x26 имеют эти два флага состояния.
+            state[9] = 0xFA;
+            state[10] = 1;
+        }
+        writer.Write(state);
         WriteUInt16(writer, template);
         WriteUInt16(writer, 0);
     }
@@ -471,6 +510,18 @@ internal static class WorldPackets
         WriteAttribute(writer, 0x0F, maximumHealth);
         WriteAttribute(writer, 0x0E, mana);
         WriteAttribute(writer, 0x10, mana);
+    }
+
+    private static void WriteNamedSpawnTail(BinaryWriter writer, string name, int tick)
+    {
+        writer.Write(new byte[11]);
+        LoginPackets.WriteString(writer, name);
+        Span<byte> actorFlags = stackalloc byte[40];
+        actorFlags.Clear();
+        actorFlags[1] = 1;
+        actorFlags[4] = 1;
+        writer.Write(actorFlags);
+        WriteInt32(writer, tick);
     }
 
     private static void WriteBattleDragonAttributes(BinaryWriter writer)
