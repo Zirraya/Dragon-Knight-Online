@@ -99,6 +99,12 @@ public partial class CharacterRepository
             WHERE character_id = @id AND quest_id = @quest AND kills = @kills AND completed = FALSE
             """, previousKills);
 
+    internal static bool TryMarkQuestTalked(int characterId, int questId) =>
+        TryChangeQuest(characterId, questId, """
+            UPDATE character_quests SET kills = 1
+            WHERE character_id = @id AND quest_id = @quest AND kills = 0 AND completed = FALSE
+            """);
+
     private static bool TryChangeQuest(int characterId, int questId, string sql, int? previousKills = null)
     {
         try
@@ -135,7 +141,7 @@ public partial class CharacterRepository
                 WHERE character_id = @id AND quest_id = @quest AND kills >= @required AND completed = FALSE
                 """;
             cmd.Parameters.AddWithValue("@quest", quest.Id);
-            cmd.Parameters.AddWithValue("@required", quest.KillCount);
+            cmd.Parameters.AddWithValue("@required", quest.KillCount == 0 ? 1 : quest.KillCount);
             if (cmd.ExecuteNonQuery() != 1)
                 return null;
 

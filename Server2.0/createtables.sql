@@ -62,6 +62,7 @@ CREATE TABLE character_items
     item_id SMALLINT UNSIGNED NOT NULL,
     dragon_slot TINYINT UNSIGNED NULL,
     backpack_slot SMALLINT UNSIGNED NULL,
+    equipment_slot TINYINT UNSIGNED NULL,
     quantity SMALLINT UNSIGNED NOT NULL DEFAULT 1,
     PRIMARY KEY (character_id, slot),
     FOREIGN KEY (character_id) REFERENCES characters (id) ON DELETE CASCADE

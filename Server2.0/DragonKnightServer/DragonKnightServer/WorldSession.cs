@@ -172,6 +172,37 @@ internal sealed partial class WorldSession(WorldCharacter character)
         return [WorldPackets.CreateBackpackUpdate(character.Id, silver, (from, swapped), (to, moved)), GetDragonSlots()];
     }
 
+    internal byte[][] ToggleEquipment(ReadOnlySpan<byte> packet)
+    {
+        if (packet.Length != 17 || packet[8] != 2
+            || BinaryPrimitives.ReadUInt16BigEndian(packet[9..]) != 1
+            || BinaryPrimitives.ReadInt32BigEndian(packet[13..]) != 0)
+            return [];
+
+        ushort tag = BinaryPrimitives.ReadUInt16BigEndian(packet[11..]);
+        if (tag is < 0x4001 or > 0x400F)
+            return [];
+
+        var result = CharacterRepository.TryToggleEquipment(character.Id, (byte)(tag - 0x4000),
+            WorldPackets.BackpackPageSize * WorldPackets.BackpackPageCount);
+        if (result is null)
+            return [];
+
+        inventory[result.Item.Slot] = result.Item;
+        var snapshot = character with { Inventory = inventory.Values.ToArray() };
+        var equipment = WorldPackets.EquippedItems(snapshot);
+        int tick = Environment.TickCount;
+        return
+        [
+            WorldPackets.CreateInventory(character.Id, silver, inventory.Values, unchecked(tick + 1)),
+            GetDragonSlots(),
+            WorldPackets.CreateEquipmentDetails(character.Id, equipment, tick),
+            WorldPackets.CreateEquipmentList(snapshot, equipment, tick),
+            WorldPackets.CreateEquipmentSlotFlags(),
+            WorldPackets.CreateEquipmentItemList(character.Id, equipment)
+        ];
+    }
+
     internal void SaveQuickbar(ReadOnlySpan<byte> packet)
     {
         int dataOffset = LoginPackets.HeaderSize + sizeof(ushort);
@@ -288,7 +319,8 @@ internal sealed partial class WorldSession(WorldCharacter character)
             return [];
 
         int remaining = injuredCreatures.GetValueOrDefault(target, creature.Template.HitPoints);
-        int damage = Math.Min(remaining, IsMounted ? 28 : 16);
+        // Test combat damage is five times the normal base values.
+        int damage = Math.Min(remaining, IsMounted ? 1000 : 1000);
         int newHealth = remaining - damage;
         if (newHealth == 0)
         {
@@ -302,14 +334,16 @@ internal sealed partial class WorldSession(WorldCharacter character)
 
         var hit = WorldPackets.CreateHit(IsMounted ? DragonId : character.Id, creature, skill, damage, newHealth);
         var questMarkers = newHealth == 0 ? QuestStatePackets() : [];
+        var questJournal = newHealth == 0 ? QuestJournalPackets() : [];
         if (newHealth == 0 && MonsterLoot.Roll(creature.Template.Id, Random.Shared.Next(100)) is { } drop
             && CharacterRepository.TryStoreLoot(character.Id, drop, WorldPackets.BackpackPageSize * WorldPackets.BackpackPageCount)
                 is { } storedItem)
         {
             inventory[storedItem.Slot] = storedItem;
-            return [.. hit, .. questMarkers, WorldPackets.CreateBackpackUpdate(character.Id, silver, (storedItem.BackpackIndex, storedItem))];
+            return [.. hit, .. questJournal, .. questMarkers,
+                WorldPackets.CreateBackpackUpdate(character.Id, silver, (storedItem.BackpackIndex, storedItem))];
         }
-        return [.. hit, .. questMarkers];
+        return [.. hit, .. questJournal, .. questMarkers];
     }
 
     internal byte[][] CollectCreatureRespawns(long now)

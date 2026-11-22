@@ -22,7 +22,7 @@ internal static partial class WorldPackets
     public static IReadOnlyList<ushort> DragonSkills { get; } = [6961];
     private static readonly (ushort Id, int Value)[] BattleDragonAttributes =
     [
-        (0, 15), (0x0D, 3000), (0x0F, 3000), (0x0E, 1500), (0x10, 1500), (0x0C, 100),
+        (0, 85), (0x0D, 3000), (0x0F, 3000), (0x0E, 1500), (0x10, 1500), (0x0C, 100),
         (0x11, 30), (0x12, 30), (0x13, 150), (0x14, 30), (0x15, 150), (0x16, 20),
         (0x17, 100), (0x18, 150), (0x19, 20), (0x1A, 150), (0x1B, 100), (0x1C, 20),
         (0x1D, 150), (0x1E, 150), (0x1F, 100), (0x20, 15), (0x21, 15), (0x22, 15),
@@ -34,7 +34,7 @@ internal static partial class WorldPackets
     {
         var position = StartingPosition(character);
         int tick = Environment.TickCount;
-        var equipment = StarterEquipment.ForTemplate(character.Template);
+        var equipment = EquippedItems(character);
         return
         [
             Build(Opcode.WorldEntry, writer =>
@@ -60,11 +60,21 @@ internal static partial class WorldPackets
             CreateInventory(character.Id, character.Silver, character.Inventory, unchecked(tick + 1)),
             CreateDragonSlots(character.Id, character.Inventory),
             CreateEquipmentDetails(character.Id, equipment, tick),
-            Build(Opcode.EquipmentList, writer => WriteEquipment(writer, character, equipment, tick)),
+            CreateEquipmentList(character, equipment, tick),
+            CreateEquipmentSlotFlags(),
+            CreateEquipmentItemList(character.Id, equipment),
             CreateLearnedSkills(0, WorldSession.GetPlayerSkills(character.Template)),
             Build(Opcode.WorldEntryStatus, writer => WriteUInt16(writer, 0)),
             Build(Opcode.WorldEntryComplete)
         ];
+    }
+
+    internal static IReadOnlyList<CharacterItem> EquippedItems(WorldCharacter character)
+    {
+        var defined = character.Inventory.Where(item => item.EquipmentSlot.HasValue).ToArray();
+        return defined.Length > 0
+            ? defined.Where(item => item.IsEquipped).ToArray()
+            : StarterEquipment.ForTemplate(character.Template);
     }
 
     public static byte[] CreateClock() => Build(Opcode.WorldClock, writer =>
@@ -119,9 +129,9 @@ internal static partial class WorldPackets
         WriteVitalAttributes(writer, character);
         WriteUInt16(writer, 0);
         writer.Write((byte)equipment.Count);
-        foreach (var item in equipment)
+        foreach (var item in equipment.Where(item => item.EquipmentSlot is byte))
         {
-            WriteUInt16(writer, item.Slot);
+            WriteUInt16(writer, item.EquipmentSlot!.Value);
             WriteUInt16(writer, item.ItemId);
         }
 
@@ -196,9 +206,10 @@ internal static partial class WorldPackets
             WriteInt32(writer, tick);
         });
 
-    private static byte[] CreateInventory(int characterId, int silver, IEnumerable<CharacterItem> inventory, int tick)
+    internal static byte[] CreateInventory(int characterId, int silver, IEnumerable<CharacterItem> inventory, int tick)
     {
-        var items = inventory.ToDictionary(item => item.BackpackIndex);
+        var items = inventory.Where(item => item.BackpackIndex < BackpackPageSize * BackpackPageCount)
+            .ToDictionary(item => item.BackpackIndex);
         return CreateBackpackUpdate(characterId, silver, Enumerable.Range(0, BackpackPageSize * BackpackPageCount)
             .Select(index => ((ushort)index, items.GetValueOrDefault((ushort)index))), tick);
     }
@@ -231,7 +242,11 @@ internal static partial class WorldPackets
         WriteUInt16(writer, slot);
         ushort itemId = item?.ItemId ?? 0;
         byte dragonType = DragonSlotType(itemId);
-        if (dragonType == 0)
+        if (item?.EquipmentSlot is byte && item.BackpackSlot.HasValue)
+        {
+            WriteEquipmentInventorySlot(writer, characterId, slot, item);
+        }
+        else if (dragonType == 0)
         {
             writer.Write((byte)0);
             WriteInt32(writer, item is null ? 0 : (item.Quantity << 16) | itemId);
@@ -261,6 +276,22 @@ internal static partial class WorldPackets
         writer.Write((byte)0);
     }
 
+    private static void WriteEquipmentInventorySlot(BinaryWriter writer, int characterId, ushort slot,
+        CharacterItem item)
+    {
+        int instanceId = EquipmentInstanceId(characterId, item.EquipmentSlot!.Value);
+        WriteUInt16(writer, slot);
+        writer.Write((byte)1);
+        WriteUInt16(writer, 36);
+        writer.Write(BitConverter.GetBytes(characterId));
+        writer.Write(BitConverter.GetBytes(instanceId));
+        writer.Write(BitConverter.GetBytes((int)item.ItemId));
+        writer.Write(new byte[18]);
+        writer.Write(new byte[] { 2, 0, 0x88, 0x13, 0x04, 0 });
+        WriteInt32(writer, instanceId);
+        writer.Write((byte)0);
+    }
+
     private static int DragonItemInstanceId(int characterId, ushort slot) =>
         0x70000000 | ((characterId & 0x003FFFFF) << 6) | slot;
 
@@ -285,6 +316,34 @@ internal static partial class WorldPackets
             }
         });
 
+    internal static byte[] CreateEquipmentList(WorldCharacter character,
+        IReadOnlyList<CharacterItem> equipment, int tick) =>
+        Build(Opcode.EquipmentList, writer => WriteEquipment(writer, character, equipment, tick));
+
+    internal static byte[] CreateEquipmentSlotFlags() => Build(Opcode.EquipmentSlotFlags, writer =>
+    {
+        WriteUInt16(writer, 5);
+        for (ushort slot = 0; slot < 5; slot++)
+        {
+            WriteUInt16(writer, slot);
+            writer.Write(new byte[6]);
+        }
+    });
+
+    internal static byte[] CreateEquipmentItemList(int characterId,
+        IReadOnlyList<CharacterItem> equipment) => Build(Opcode.EquipmentItemList, writer =>
+    {
+        WriteInt32(writer, characterId);
+        WriteUInt16(writer, checked((ushort)equipment.Count));
+        writer.Write(new byte[] { 1, 1 });
+        foreach (var item in equipment.OrderBy(item => item.EquipmentSlot))
+        {
+            WriteUInt16(writer, item.EquipmentSlot!.Value);
+            WriteInt32(writer, item.ItemId);
+            WriteInt32(writer, 0);
+        }
+    });
+
     private static void WriteEquipment(BinaryWriter writer, WorldCharacter character,
         IReadOnlyList<CharacterItem> equipment, int tick)
     {
@@ -293,7 +352,7 @@ internal static partial class WorldPackets
         for (ushort slot = 0; slot < 16; slot++)
         {
             WriteUInt16(writer, slot);
-            WriteUInt16(writer, equipment.FirstOrDefault(item => item.Slot == slot)?.ItemId ?? (ushort)0);
+            WriteUInt16(writer, equipment.FirstOrDefault(item => item.EquipmentSlot == slot)?.ItemId ?? (ushort)0);
             if (slot >= 14)
                 WriteUInt16(writer, 0);
         }
@@ -352,29 +411,46 @@ internal static partial class WorldPackets
     private static readonly byte[] EquipmentDetailsTemplate = Convert.FromHexString(
         "00f1000000000d9600000202001000000000010100240202000021200060c15d00000000000000000000000000000000000000000200881304006000202100020100240202000022200060a961000000000000000000000000000000000000000002008813040060002022000301002402020000232000607969000000000000000000000000000000000000000002008813040060002023000401002402020000242000609165000000000000000000000000000000000000000002008813040060002024000500000600000700000800000900000a00000b00000c00000d0000000e00000000000f00000000f4e05ebe");
 
-    private static byte[] CreateEquipmentDetails(int characterId, IReadOnlyList<CharacterItem> equipment, int tick)
+    internal static byte[] CreateEquipmentDetails(int characterId, IReadOnlyList<CharacterItem> equipment, int tick)
     {
-        byte[] packet = (byte[])EquipmentDetailsTemplate.Clone();
-        BinaryPrimitives.WriteInt32BigEndian(packet.AsSpan(8), characterId);
-        int[] characterOffsets = [22, 67, 112, 157];
-        int[] instanceOffsets = [26, 71, 116, 161];
-        int[] itemOffsets = [30, 75, 120, 165];
-        int[] suffixOffsets = [58, 103, 148, 193];
-        for (int i = 0; i < 4; i++)
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        writer.Write(new byte[LoginPackets.HeaderSize]);
+        WriteInt32(writer, characterId);
+        WriteUInt16(writer, 16);
+        writer.Write(new byte[4]);
+        for (byte slot = 1; slot <= 4; slot++)
         {
-            ushort slot = (ushort)(i + 1);
-            int instance = 0x60000000 | ((characterId & 0x0FFFFFFF) << 4) | slot;
-            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(characterOffsets[i]), characterId);
-            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(instanceOffsets[i]), instance);
-            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(itemOffsets[i]),
-                equipment.FirstOrDefault(item => item.Slot == slot)?.ItemId ?? 0);
-            BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(suffixOffsets[i]), instance);
+            writer.Write(slot);
+            var item = equipment.FirstOrDefault(candidate => candidate.EquipmentSlot == slot);
+            if (item is null)
+            {
+                writer.Write((byte)0);
+                writer.Write((byte)0);
+                continue;
+            }
+
+            int instance = EquipmentInstanceId(characterId, slot);
+            writer.Write((byte)1);
+            WriteUInt16(writer, 36);
+            writer.Write(BitConverter.GetBytes(characterId));
+            writer.Write(BitConverter.GetBytes(instance));
+            writer.Write(BitConverter.GetBytes((int)item.ItemId));
+            writer.Write(new byte[18]);
+            writer.Write(new byte[] { 2, 0, 0x88, 0x13, 0x04, 0 });
+            WriteInt32(writer, instance);
+            writer.Write((byte)0);
         }
 
-        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(237), tick);
+        writer.Write(EquipmentDetailsTemplate.AsSpan(198));
+        byte[] packet = stream.ToArray();
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(packet.Length - sizeof(int)), tick);
         LoginPackets.WriteHeader(packet, Opcode.EquipmentDetails);
         return packet;
     }
+
+    private static int EquipmentInstanceId(int characterId, byte equipmentSlot) =>
+        0x60000000 | ((characterId & 0x0FFFFFFF) << 4) | equipmentSlot;
 
     public static byte[] CreateDragonSlotResult(byte bag, ushort slot, byte dragonSlot, bool remove, byte itemType,
         ushort result = 0) =>

@@ -174,6 +174,10 @@ public class ClientSession
                 await SendPackets(world.MoveBackpackItem(packet));
                 break;
 
+            case (ushort)Opcode.ToggleEquipment when world is not null && size == 17:
+                await SendPackets(world.ToggleEquipment(packet));
+                break;
+
             case (ushort)Opcode.MovementAction when world is not null && size is 13 or 19:
                 await SendPackets(world.Stop(packet));
                 break;
@@ -199,22 +203,23 @@ public class ClientSession
             // They carry no server response in the captured protocol.
             case 0x084E when world is not null && size == 8:
             case 0x10CB when world is not null && size == 9:
-            case 0x0992 when world is not null && size == 17:
-                break;
 
             case (ushort)Opcode.RequestQuestMarkers when world is not null && size == 8:
-                await SendPackets(world.QuestMarkerPackets());
+                // In the captured client flow 0x0A59 is sent when the quest
+                // journal is opened. The server answers with 0x0E5A and the
+                // quest data, not with 0x0E5F NPC markers.
+                await SendPackets(world.QuestJournalPackets());
                 break;
 
             case (ushort)Opcode.RequestQuestDetails when world is not null && size == 12:
             case (ushort)Opcode.AcceptQuest when world is not null && size == 12:
             case (ushort)Opcode.AbandonQuest when world is not null && size == 12:
-            case (ushort)Opcode.RequestQuestJournal when world is not null && size == 12:
+            case (ushort)Opcode.RequestQuestJournal when world is not null && size >= LoginPackets.HeaderSize:
                 await SendPackets(world.HandleQuestPacket((Opcode)opcode, packet));
                 break;
 
             case (ushort)Opcode.RequestQuestTracking when world is not null && size == 13:
-                await SendPackets(world.HandleQuestPacket(Opcode.RequestQuestDetails, packet));
+                await SendPackets(world.HandleQuestPacket(Opcode.RequestQuestTracking, packet));
                 break;
 
             case (ushort)Opcode.RequestShopBuyback when world is not null && size == 20:

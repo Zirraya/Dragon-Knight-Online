@@ -5,17 +5,31 @@ namespace DragonKnightServer;
 internal static class StarterEquipment
 {
     private static readonly CharacterItem[] Paladin =
-        [new(1, 485), new(2, 486), new(3, 488), new(4, 487), new(6, 398)];
+        [new(1, 485, EquipmentSlot: 1), new(2, 486, EquipmentSlot: 2),
+         new(3, 488, EquipmentSlot: 3), new(4, 487, EquipmentSlot: 4),
+         new(6, 398, EquipmentSlot: 6)];
     private static readonly CharacterItem[] Warrior =
-        [new(1, 490), new(2, 491), new(3, 493), new(4, 492), new(6, 398)];
+        [new(1, 490, EquipmentSlot: 1), new(2, 491, EquipmentSlot: 2),
+         new(3, 493, EquipmentSlot: 3), new(4, 492, EquipmentSlot: 4),
+         new(6, 398, EquipmentSlot: 6)];
+
+    // Стартовый странник из захвата создаётся с шаблоном 3. В 0x0D97
+    // сервер отправляет четыре предмета без головного убора.
     private static readonly CharacterItem[] Wanderer =
-        [new(1, 495), new(2, 496), new(3, 498), new(4, 497), new(6, 396), new(7, 395)];
+        [new(1, 24003, EquipmentSlot: 1), new(2, 25005, EquipmentSlot: 2),
+         new(3, 27005, EquipmentSlot: 3), new(4, 26005, EquipmentSlot: 4)];
     private static readonly CharacterItem[] FemaleWanderer =
-        [new(1, 500), new(2, 501), new(3, 502), new(4, 503), new(6, 396), new(7, 395)];
+        [new(1, 474, EquipmentSlot: 1), new(2, 475, EquipmentSlot: 2),
+         new(3, 477, EquipmentSlot: 3), new(4, 476, EquipmentSlot: 4),
+         new(6, 478, EquipmentSlot: 6)];
     private static readonly CharacterItem[] Mage =
-        [new(1, 24001), new(2, 25001), new(3, 27001), new(4, 26001), new(6, 397)];
+        [new(1, 24001, EquipmentSlot: 1), new(2, 25001, EquipmentSlot: 2),
+         new(3, 27001, EquipmentSlot: 3), new(4, 26001, EquipmentSlot: 4),
+         new(6, 397, EquipmentSlot: 6)];
     private static readonly CharacterItem[] Priest =
-        [new(1, 24002), new(2, 25004), new(3, 27004), new(4, 26004), new(6, 397)];
+        [new(1, 24002, EquipmentSlot: 1), new(2, 25004, EquipmentSlot: 2),
+         new(3, 27004, EquipmentSlot: 3), new(4, 26004, EquipmentSlot: 4),
+         new(6, 397, EquipmentSlot: 6)];
 
     public static IReadOnlyList<CharacterItem> ForTemplate(int template) => template switch
     {

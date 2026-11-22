@@ -15,10 +15,13 @@ internal record WorldCharacter(int Id, string Name, int Level, int Map, int Temp
 }
 
 internal record CharacterItem(ushort Slot, ushort ItemId, byte? DragonSlot = null, ushort? BackpackSlot = null,
-    ushort Quantity = 1)
+    ushort Quantity = 1, byte? EquipmentSlot = null)
 {
-    public ushort BackpackIndex => BackpackSlot ?? Slot;
+    public ushort BackpackIndex => BackpackSlot ?? (EquipmentSlot.HasValue ? ushort.MaxValue : Slot);
+    public bool IsEquipped => EquipmentSlot.HasValue && !BackpackSlot.HasValue;
 }
+
+internal record EquipmentToggleResult(CharacterItem Item, bool Equipped);
 
 public partial class CharacterRepository
 {
@@ -28,7 +31,7 @@ public partial class CharacterRepository
     internal const ushort YoungSilverDragonItem = 58508;
     internal const ushort ElvenDragonItem = 41033;
     internal const ushort StarterDragonEgg = 58523;
-    internal const int TestLevel = 15;
+    internal const int TestLevel = 85;
 
     internal static bool Delete(string username, string characterName)
     {
@@ -159,6 +162,7 @@ public partial class CharacterRepository
 
         int characterId = checked((int)cmd.LastInsertedId);
         GrantStarterItems(cmd, characterId);
+        GrantStarterEquipment(cmd, characterId, template);
         GrantStarterEgg(cmd, characterId);
         transaction.Commit();
         return true;
@@ -202,6 +206,7 @@ public partial class CharacterRepository
         EnsureInventoryTable(db);
         EnsureQuestTable(db);
         GrantStarterItems(cmd, character.Id);
+        GrantStarterEquipment(cmd, character.Id, character.Template);
         if (!eggGranted)
         {
             using var transaction = db.BeginTransaction();
@@ -263,6 +268,69 @@ public partial class CharacterRepository
         {
             Console.WriteLine($"Не удалось переместить предмет персонажа {characterId}. Код MySQL {ex.Number}.");
             return false;
+        }
+    }
+
+    internal static EquipmentToggleResult? TryToggleEquipment(int characterId, byte equipmentSlot, int capacity)
+    {
+        if (equipmentSlot == 0 || capacity <= 0)
+            return null;
+
+        try
+        {
+            using var db = Database.Open();
+            EnsureInventoryTable(db);
+            using var transaction = db.BeginTransaction();
+            using var cmd = db.CreateCommand();
+            cmd.Transaction = transaction;
+            var items = ReadInventory(cmd, characterId, forUpdate: true);
+            var equipped = items.Find(item => item.EquipmentSlot == equipmentSlot && item.IsEquipped);
+            CharacterItem? updated;
+            bool isEquipped;
+
+            if (equipped is not null)
+            {
+                var occupied = items.Where(item => item.BackpackIndex < capacity)
+                    .Select(item => item.BackpackIndex).ToHashSet();
+                int destination = Enumerable.Range(0, capacity)
+                    .FirstOrDefault(index => !occupied.Contains((ushort)index), -1);
+                if (destination < 0)
+                    return null;
+
+                updated = equipped with { BackpackSlot = (ushort)destination };
+                isEquipped = false;
+            }
+            else
+            {
+                var backpackItem = items.Find(item => item.EquipmentSlot == equipmentSlot
+                    && item.BackpackSlot.HasValue);
+                if (backpackItem is null)
+                    return null;
+
+                updated = backpackItem with { BackpackSlot = null };
+                isEquipped = true;
+            }
+
+            cmd.Parameters.Clear();
+            cmd.CommandText = """
+                UPDATE character_items
+                SET equipment_slot = @equipmentSlot, backpack_slot = @backpackSlot
+                WHERE character_id = @characterId AND slot = @slot
+                """;
+            cmd.Parameters.AddWithValue("@equipmentSlot", (object?)updated.EquipmentSlot ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@backpackSlot", (object?)updated.BackpackSlot ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@characterId", characterId);
+            cmd.Parameters.AddWithValue("@slot", updated.Slot);
+            if (cmd.ExecuteNonQuery() != 1)
+                return null;
+
+            transaction.Commit();
+            return new EquipmentToggleResult(updated, isEquipped);
+        }
+        catch (MySqlException ex)
+        {
+            Console.WriteLine($"Не удалось переключить экипировку персонажа {characterId}. Код MySQL {ex.Number}.");
+            return null;
         }
     }
 
@@ -336,6 +404,7 @@ public partial class CharacterRepository
         cmd.Parameters.Clear();
         cmd.CommandText = """
             SELECT slot, item_id, dragon_slot, backpack_slot, quantity
+                   , equipment_slot
             FROM character_items WHERE character_id = @id ORDER BY slot
             """ + (forUpdate ? " FOR UPDATE" : "");
         cmd.Parameters.AddWithValue("@id", characterId);
@@ -344,7 +413,7 @@ public partial class CharacterRepository
         while (reader.Read())
             items.Add(new CharacterItem(reader.GetUInt16(0), reader.GetUInt16(1),
                 reader.IsDBNull(2) ? null : reader.GetByte(2), reader.IsDBNull(3) ? null : reader.GetUInt16(3),
-                reader.GetUInt16(4)));
+                reader.GetUInt16(4), reader.IsDBNull(5) ? null : reader.GetByte(5)));
         return items;
     }
 
@@ -414,6 +483,43 @@ public partial class CharacterRepository
         cmd.ExecuteNonQuery();
     }
 
+    private static void GrantStarterEquipment(MySqlCommand cmd, long characterId, int template)
+    {
+        var definitions = StarterEquipment.ForTemplate(template);
+        if (definitions.Count == 0)
+            return;
+
+        var existing = ReadInventory(cmd, checked((int)characterId));
+        var usedSlots = existing.Select(item => item.Slot).ToHashSet();
+        ushort nextSlot = (ushort)Math.Max(2, existing.Select(item => (int)item.Slot)
+            .DefaultIfEmpty(1).Max() + 1);
+
+        foreach (var definition in definitions)
+        {
+            if (existing.Any(item => item.EquipmentSlot == definition.EquipmentSlot))
+                continue;
+
+            while (usedSlots.Contains(nextSlot))
+                nextSlot = checked((ushort)(nextSlot + 1));
+
+            cmd.Parameters.Clear();
+            cmd.CommandText = """
+                INSERT INTO character_items
+                    (character_id, slot, item_id, equipment_slot, quantity)
+                VALUES (@characterId, @slot, @itemId, @equipmentSlot, 1)
+                """;
+            cmd.Parameters.AddWithValue("@characterId", characterId);
+            cmd.Parameters.AddWithValue("@slot", nextSlot);
+            cmd.Parameters.AddWithValue("@itemId", definition.ItemId);
+            cmd.Parameters.AddWithValue("@equipmentSlot", definition.EquipmentSlot!.Value);
+            cmd.ExecuteNonQuery();
+
+            usedSlots.Add(nextSlot);
+            existing.Add(definition with { Slot = nextSlot });
+            nextSlot = checked((ushort)(nextSlot + 1));
+        }
+    }
+
     private static void EnsureInventoryTable(MySqlConnection db)
     {
         lock (SchemaLock)
@@ -430,6 +536,7 @@ public partial class CharacterRepository
                     item_id SMALLINT UNSIGNED NOT NULL,
                     dragon_slot TINYINT UNSIGNED NULL,
                     backpack_slot SMALLINT UNSIGNED NULL,
+                    equipment_slot TINYINT UNSIGNED NULL,
                     quantity SMALLINT UNSIGNED NOT NULL DEFAULT 1,
                     PRIMARY KEY (character_id, slot),
                     FOREIGN KEY (character_id) REFERENCES characters (id) ON DELETE CASCADE
@@ -439,6 +546,7 @@ public partial class CharacterRepository
             EnsureColumn(db, "character_items", "dragon_slot", "TINYINT UNSIGNED NULL");
             EnsureColumn(db, "character_items", "backpack_slot", "SMALLINT UNSIGNED NULL");
             EnsureColumn(db, "character_items", "quantity", "SMALLINT UNSIGNED NOT NULL DEFAULT 1");
+            EnsureColumn(db, "character_items", "equipment_slot", "TINYINT UNSIGNED NULL");
             inventoryTableReady = true;
         }
     }

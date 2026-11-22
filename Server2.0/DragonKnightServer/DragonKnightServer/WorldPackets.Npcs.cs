@@ -26,11 +26,16 @@ internal static partial class WorldPackets
 
     internal static byte[] CloseNpcDialog() => Build(Opcode.NpcDialog, writer => WriteUInt16(writer, 3));
 
-    internal static byte[] CreateQuestMarker(int npcId, bool available) => Build(Opcode.QuestMarker, writer =>
+    internal static byte[] CreateQuestMarker(int npcId, bool available) =>
+        CreateQuestMarker(npcId, available ? (byte)1 : (byte)0);
+
+    // Marker state 1 is an exclamation mark, state 2 is a gray question,
+    // and state 3 is a yellow question.
+    internal static byte[] CreateQuestMarker(int npcId, byte state) => Build(Opcode.QuestMarker, writer =>
     {
         WriteInt32(writer, npcId);
-        WriteUInt16(writer, available ? (ushort)1 : (ushort)0);
-        writer.Write((byte)(available ? 1 : 0));
+        WriteUInt16(writer, state);
+        writer.Write((byte)(state == 0 ? 0 : 1));
         WriteInt32(writer, Environment.TickCount);
     });
 
@@ -41,22 +46,27 @@ internal static partial class WorldPackets
             WriteQuestString(writer, quest.Title);
             WriteUInt16(writer, quest.Level);
             WriteQuestString(writer, quest.Description);
-            string objective = quest.KillCount == 0
-                ? quest.Objective
-                : $"{quest.Objective} ({progress.Kills}/{quest.KillCount})";
+            string targetName = quest.TargetName is null
+                ? string.Empty
+                : quest.TargetX > 0 && quest.TargetY > 0
+                    ? $" Цель: {quest.TargetName} (X: {quest.TargetX / 100}, Y: {quest.TargetY / 100})."
+                    : $" Цель: {quest.TargetName}.";
+            string progressText = quest.KillCount > 0
+                ? $" Убито: {Math.Clamp(progress.Kills, 0, quest.KillCount)}/{quest.KillCount}."
+                : string.Empty;
+            string objective = quest.Objective + progressText + targetName;
             WriteQuestString(writer, objective);
             writer.Write((byte)0);
             WriteInt32(writer, state);
-            WriteUInt16(writer, 0);
-            WriteQuestString(writer, string.Empty);
-            WriteInt32(writer, quest.Reward);
-            writer.Write((byte)(state == 1 ? 1 : 0));
-            WriteUInt16(writer, 0);
-            WriteUInt16(writer, 0);
-            WriteUInt16(writer, 0);
-            WriteUInt16(writer, 0);
-            for (int i = 0; i < 36; i++)
-                WriteUInt16(writer, 0);
+            // The client expects a fixed details section after the objective.
+            // The first quest uses the shorter 234-byte section captured in
+            // the client trace. Other quest records use 257 bytes.
+            // Every captured quest-details packet reserves five objective
+            // records, including quests without a map link. The client uses
+            // this count when it attaches the progress packet to the journal.
+            WriteUInt16(writer, 5);
+            int tailPadding = quest.Id == 114001 ? 223 : 246;
+            writer.Write(new byte[tailPadding]);
             WriteInt32(writer, Environment.TickCount);
         });
 
@@ -64,18 +74,53 @@ internal static partial class WorldPackets
         => Build(completed ? Opcode.QuestTurnIn : Opcode.QuestOffer, writer =>
         {
             WriteInt32(writer, quest.Id);
-            WriteQuestString(writer, completed ? $"Готово: {quest.Title}" : quest.Title);
+            string text = quest.Id == 114001
+                ? quest.Objective
+                : completed ? $"Готово: {quest.Title}" : quest.Title;
+            WriteQuestString(writer, text);
             WriteInt32(writer, Environment.TickCount);
         });
 
     internal static byte[] CreateQuestProgress(WorldQuest quest, QuestProgress progress) => Build(Opcode.QuestProgress, writer =>
     {
+        // 0x0E60 contains one record for each objective. The objective type
+        // is big-endian, while the target template ID is a little-endian
+        // field in the client protocol. The final byte is the current count.
+        if (quest.Monster == 0)
+        {
+            WriteUInt16(writer, 0);
+            return;
+        }
+
         WriteUInt16(writer, 1);
         WriteInt32(writer, quest.Id);
+        WriteInt32(writer, 0);
+        writer.Write(BitConverter.GetBytes(quest.Monster));
         writer.Write((byte)Math.Clamp(progress.Kills, 0, byte.MaxValue));
-        WriteInt32(writer, progress.Kills);
-        WriteInt32(writer, quest.KillCount);
     });
+
+    // The journal packet only registers the quest ID. Details and progress
+    // are sent separately through QuestDetails and QuestProgress.
+    internal static byte[] CreateQuestJournal(WorldQuest quest, QuestProgress progress) =>
+        Build(Opcode.QuestJournal, writer =>
+        {
+            WriteInt32(writer, quest.Id);
+            WriteInt32(writer, Environment.TickCount);
+        });
+
+    // 0x0E5A is the task-window list. It is a sequence of quest ID/title
+    // pairs followed by a zero field and a timestamp.
+    internal static byte[] CreateQuestList(IReadOnlyList<(WorldQuest Quest, QuestProgress Progress)> quests) =>
+        Build(Opcode.WorldClock, writer =>
+        {
+            foreach (var (quest, _) in quests)
+            {
+                WriteInt32(writer, quest.Id);
+                WriteQuestString(writer, quest.Title);
+            }
+            WriteInt32(writer, 0);
+            WriteInt32(writer, Environment.TickCount);
+        });
 
     internal static byte[] CreateNpcShop(int npcId, int infoId)
         => Build(Opcode.NpcShop, writer =>

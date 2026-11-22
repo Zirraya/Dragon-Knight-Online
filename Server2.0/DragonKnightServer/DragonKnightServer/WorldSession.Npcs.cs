@@ -8,16 +8,67 @@ internal sealed partial class WorldSession
 {
     private int silver = character.Silver;
 
+    private static bool IsQuestReady(WorldQuest quest, QuestProgress progress) =>
+        quest.KillCount == 0 ? progress.Kills > 0 : progress.Kills >= quest.KillCount;
+
+    private bool MarkTalkQuest(int rawNpcId)
+    {
+        bool changed = false;
+        foreach (var quest in WorldQuests.ForFaction(faction))
+        {
+            if (quest.KillCount != 0 || quest.Finisher != rawNpcId
+                || !quests.TryGetValue(quest.Id, out var progress)
+                || progress.Completed || progress.Kills != 0)
+                continue;
+
+            if (CharacterRepository.TryMarkQuestTalked(character.Id, quest.Id))
+            {
+                quests[quest.Id] = progress with { Kills = 1 };
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     internal byte[][] QuestStatePackets()
     {
-        var quest = CurrentQuest();
-        if (quest is null)
-            return [];
-        var packets = new List<byte[]> { WorldPackets.CreateQuestMarker(NpcPopulation.IdOffset + quest.Giver, true) };
-        if (quests.TryGetValue(quest.Id, out var progress) && !progress.Completed
-            && quest.Finisher != quest.Giver)
-            packets.Add(WorldPackets.CreateQuestMarker(NpcPopulation.IdOffset + quest.Finisher,
-                progress.Kills >= quest.KillCount || quest.KillCount == 0));
+        var packets = new List<byte[]>();
+        foreach (var quest in WorldQuests.ForFaction(faction))
+        {
+            if (!IsQuestUnlocked(quest)
+                || quests.TryGetValue(quest.Id, out var saved) && saved.Completed)
+                continue;
+
+            int giverId = NpcPopulation.IdOffset + quest.Giver;
+            bool accepted = quests.TryGetValue(quest.Id, out var progress);
+            bool ready = accepted && IsQuestReady(quest, progress);
+            if (!accepted)
+                packets.Add(WorldPackets.CreateQuestMarker(giverId, 1));
+            else if (quest.Finisher == quest.Giver)
+                packets.Add(WorldPackets.CreateQuestMarker(giverId, ready ? (byte)3 : (byte)2));
+            else
+            {
+                packets.Add(WorldPackets.CreateQuestMarker(giverId, 0));
+                packets.Add(WorldPackets.CreateQuestMarker(NpcPopulation.IdOffset + quest.Finisher,
+                    ready ? (byte)3 : (byte)2));
+            }
+        }
+        return [.. packets];
+    }
+
+    internal byte[][] QuestJournalPackets()
+    {
+        var active = WorldQuests.ForFaction(faction)
+            .Where(quest => quests.TryGetValue(quest.Id, out var progress) && !progress.Completed)
+            .Select(quest => (quest, quests[quest.Id]))
+            .ToArray();
+        var packets = new List<byte[]> { WorldPackets.CreateQuestList(active) };
+        foreach (var (quest, progress) in active)
+        {
+            packets.Add(WorldPackets.CreateQuestDetails(quest, progress, 1));
+            packets.Add(WorldPackets.CreateQuestProgress(quest, progress));
+            packets.Add(WorldPackets.CreateQuestJournal(quest, progress));
+        }
         return [.. packets];
     }
 
@@ -26,7 +77,8 @@ internal sealed partial class WorldSession
     internal byte[][] HandleNpcPacket(ReadOnlySpan<byte> packet)
     {
         int npcId = BinaryPrimitives.ReadInt32BigEndian(packet[8..]);
-        int option = BinaryPrimitives.ReadInt32BigEndian(packet[12..]);
+        int action = BinaryPrimitives.ReadInt32BigEndian(packet[12..]);
+        int selection = packet.Length >= 20 ? BinaryPrimitives.ReadInt32BigEndian(packet[16..]) : action;
         var npc = FindNpc(npcId);
         // Some client builds prepend the player actor id to this request.
         // In that layout the NPC id and dialog option are shifted by four
@@ -35,19 +87,20 @@ internal sealed partial class WorldSession
         if (npc is null && packet.Length >= 20)
         {
             npcId = BinaryPrimitives.ReadInt32BigEndian(packet[12..]);
-            option = BinaryPrimitives.ReadInt32BigEndian(packet[16..]);
+            action = BinaryPrimitives.ReadInt32BigEndian(packet[16..]);
+            selection = action;
             npc = FindNpc(npcId);
         }
         if (npc is not null)
             npcId = npc.Id;
         if (npc is null)
         {
-            Console.WriteLine($"Взаимодействие с неизвестным НПС {npcId}, пункт {option}, карта {character.Map}.");
+            Console.WriteLine($"Взаимодействие с неизвестным НПС {npcId}, пункт {selection}, карта {character.Map}.");
             return [];
         }
 
         if (npc.IsDragonEnvoy)
-            return option == 0
+            return action == 0
                 ? [WorldPackets.CreateNpcDialog(npcId,
                     "Приветствую, Харпия. Я Посланник Драконов, драконьи услуги. Чем могу быть полезен?",
                     [
@@ -61,31 +114,79 @@ internal sealed partial class WorldSession
                 : [WorldPackets.CreateNpcShop(npcId, npc.InfoId)];
 
         int rawId = npc.Id - NpcPopulation.IdOffset;
-        var quest = WorldQuests.ForFaction(faction).FirstOrDefault(item =>
-            IsQuestUnlocked(item) && !quests.GetValueOrDefault(item.Id).Completed
-            && (item.Giver == rawId || item.Finisher == rawId));
-        if (quest is null || !IsQuestUnlocked(quest))
-            return option == 0 ? [WorldPackets.CreateNpcDialog(npcId, npc.Name, [])] : [];
+        bool talkedQuest = MarkTalkQuest(rawId);
+        var questsAtNpc = WorldQuests.ForFaction(faction)
+            .Where(item =>
+            {
+                if (!IsQuestUnlocked(item)
+                    || quests.TryGetValue(item.Id, out var saved) && saved.Completed)
+                    return false;
 
+                bool accepted = quests.TryGetValue(item.Id, out var progress);
+                bool ready = accepted && IsQuestReady(item, progress);
+                return !accepted && item.Giver == rawId
+                    || accepted && item.Finisher == rawId && (ready || item.Finisher == item.Giver
+                        || item.KillCount == 0);
+            })
+            .ToArray();
+
+        if (action == 0)
+        {
+            var options = questsAtNpc
+                .Select(item => ((ushort)1, item.Title))
+                .ToArray();
+            var packets = new List<byte[]> { WorldPackets.CreateNpcDialog(npcId, npc.Name, options) };
+            if (talkedQuest)
+                packets.AddRange(QuestJournalPackets());
+            packets.Add(WorldPackets.CreateQuestMarker(npcId, QuestMarkerState(rawId)));
+            if (talkedQuest)
+                packets.AddRange(QuestStatePackets());
+            return [.. packets];
+        }
+
+        if (selection < 0 || selection >= questsAtNpc.Length)
+            return [];
+
+        var quest = questsAtNpc[selection];
         var progress = quests.GetValueOrDefault(quest.Id);
-        bool accepted = quests.ContainsKey(quest.Id);
-        bool ready = accepted && (quest.KillCount == 0 || progress.Kills >= quest.KillCount);
-        var options = progress.Completed
-            ? Array.Empty<(ushort, string)>()
-            : [((ushort)1, quest.Title)];
-        if (option == 0)
-            return [WorldPackets.CreateNpcDialog(npcId, npc.Name, options),
-                WorldPackets.CreateQuestMarker(npcId, !accepted)];
-
-        if (!accepted && quest.Giver == rawId)
+        bool acceptedQuest = quests.ContainsKey(quest.Id);
+        bool readyQuest = acceptedQuest && IsQuestReady(quest, progress);
+        if (!acceptedQuest && quest.Giver == rawId)
             return [WorldPackets.CreateQuestOffer(quest, progress, completed: false),
                 WorldPackets.CreateQuestDetails(quest, progress, 0)];
 
-        if (ready && quest.Finisher == rawId)
+        if (readyQuest && quest.Finisher == rawId)
             return [WorldPackets.CreateQuestOffer(quest, progress, completed: true),
                 WorldPackets.CreateQuestDetails(quest, progress, 2)];
 
-        return [WorldPackets.CreateQuestDetails(quest, progress, 0)];
+        return [WorldPackets.CreateQuestDetails(quest, progress, 1)];
+    }
+
+    private byte QuestMarkerState(int rawNpcId)
+    {
+        bool available = false;
+        bool pending = false;
+        bool ready = false;
+        foreach (var quest in WorldQuests.ForFaction(faction))
+        {
+            if (!IsQuestUnlocked(quest)
+                || quests.TryGetValue(quest.Id, out var saved) && saved.Completed)
+                continue;
+
+            bool accepted = quests.TryGetValue(quest.Id, out var progress);
+            if (!accepted && quest.Giver == rawNpcId)
+                available = true;
+            else if (accepted && quest.Finisher == rawNpcId)
+            {
+                bool complete = IsQuestReady(quest, progress);
+                if (complete)
+                    ready = true;
+                else if (quest.Finisher == quest.Giver)
+                    pending = true;
+            }
+        }
+
+        return ready ? (byte)3 : available ? (byte)1 : pending ? (byte)2 : (byte)0;
     }
 
     private WorldNpc? FindNpc(int clientNpcId) => npcs.FirstOrDefault(item =>
@@ -97,14 +198,20 @@ internal sealed partial class WorldSession
 
     internal byte[][] HandleQuestPacket(Opcode opcode, ReadOnlySpan<byte> packet)
     {
+        if (opcode == Opcode.RequestQuestJournal)
+            return QuestJournalPackets();
+
         int questId = BinaryPrimitives.ReadInt32BigEndian(packet[8..]);
         var quest = WorldQuests.ForFaction(faction).FirstOrDefault(item => item.Id == questId);
         if (quest is null || !IsQuestUnlocked(quest))
             return [];
 
         var progress = quests.GetValueOrDefault(quest.Id);
-        if (opcode is Opcode.RequestQuestDetails or Opcode.RequestQuestJournal)
-            return [WorldPackets.CreateQuestDetails(quest, progress, progress.Completed ? 2 : 0)];
+        if (opcode is Opcode.RequestQuestDetails or Opcode.RequestQuestTracking)
+        {
+            int state = progress.Completed ? 2 : quests.ContainsKey(quest.Id) ? 1 : 0;
+            return [WorldPackets.CreateQuestDetails(quest, progress, state)];
+        }
         if (opcode == Opcode.AcceptQuest)
         {
             if (progress.Completed || quests.ContainsKey(quest.Id))
@@ -112,23 +219,42 @@ internal sealed partial class WorldSession
             if (!CharacterRepository.TryAcceptQuest(character.Id, quest.Id))
                 return [];
             quests[quest.Id] = new QuestProgress(0, false);
-            return [WorldPackets.CreateQuestDetails(quest, quests[quest.Id], 1), WorldPackets.CreateQuestProgress(quest, quests[quest.Id])];
+            return [.. QuestJournalPackets(), .. QuestStatePackets(), WorldPackets.CloseNpcDialog()];
         }
         if (opcode == Opcode.CompleteQuest)
         {
-            if (!quests.ContainsKey(quest.Id) || progress.Kills < quest.KillCount)
+            if (!quests.ContainsKey(quest.Id) || progress.Completed || !IsQuestReady(quest, progress))
                 return [];
             var newSilver = CharacterRepository.TryCompleteQuest(character.Id, quest);
             if (newSilver is not { } balance)
                 return [];
             silver = balance;
             quests[quest.Id] = progress with { Completed = true };
-            return [WorldPackets.CreateQuestOffer(quest, quests[quest.Id], completed: true), WorldPackets.CreateBackpackUpdate(character.Id, silver)];
+            var clearedMarkers = new List<byte[]>
+            {
+                WorldPackets.CreateQuestMarker(NpcPopulation.IdOffset + quest.Giver, 0)
+            };
+            if (quest.Finisher != quest.Giver)
+                clearedMarkers.Add(WorldPackets.CreateQuestMarker(NpcPopulation.IdOffset + quest.Finisher, 0));
+            return [WorldPackets.CreateQuestOffer(quest, quests[quest.Id], completed: true),
+                WorldPackets.CreateQuestDetails(quest, quests[quest.Id], 2),
+                WorldPackets.CreateBackpackUpdate(character.Id, silver),
+                .. QuestJournalPackets(),
+                .. clearedMarkers,
+                .. QuestStatePackets(),
+                WorldPackets.CloseNpcDialog()];
         }
         if (opcode == Opcode.AbandonQuest && CharacterRepository.TryAbandonQuest(character.Id, quest.Id))
         {
             quests.Remove(quest.Id);
-            return [WorldPackets.CreateQuestMarker(NpcPopulation.IdOffset + quest.Giver, true)];
+            var clearedMarkers = new List<byte[]>
+            {
+                WorldPackets.CreateQuestMarker(NpcPopulation.IdOffset + quest.Giver, 0)
+            };
+            if (quest.Finisher != quest.Giver)
+                clearedMarkers.Add(WorldPackets.CreateQuestMarker(NpcPopulation.IdOffset + quest.Finisher, 0));
+            return [.. clearedMarkers,
+                .. QuestJournalPackets(), .. QuestStatePackets()];
         }
         return [];
     }
@@ -163,6 +289,8 @@ internal sealed partial class WorldSession
     {
         if (quest.Level > character.Level)
             return false;
+        if (quest.SideQuest)
+            return true;
         var list = WorldQuests.ForFaction(faction);
         int index = Array.IndexOf(list.ToArray(), quest);
         return index <= 0 || quests.TryGetValue(list[index - 1].Id, out var previous) && previous.Completed;
