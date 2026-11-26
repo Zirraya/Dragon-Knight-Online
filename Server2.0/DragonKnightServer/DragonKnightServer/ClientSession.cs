@@ -174,7 +174,7 @@ public class ClientSession
                 await SendPackets(world.MoveBackpackItem(packet));
                 break;
 
-            case (ushort)Opcode.ToggleEquipment when world is not null && size == 17:
+            case (ushort)Opcode.ToggleEquipment when world is not null && size >= 13:
                 await SendPackets(world.ToggleEquipment(packet));
                 break;
 

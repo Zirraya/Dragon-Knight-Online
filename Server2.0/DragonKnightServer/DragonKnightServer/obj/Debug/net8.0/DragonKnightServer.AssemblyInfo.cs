@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DragonKnightServer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1b2bf4be99ca6707311f97f167d41887022e0f32")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+357f647e93b8cb631dc359217b5142e01e55f4a0")]
 [assembly: System.Reflection.AssemblyProductAttribute("DragonKnightServer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DragonKnightServer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

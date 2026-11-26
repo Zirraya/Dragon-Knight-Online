@@ -31,6 +31,8 @@ public enum Opcode : ushort
     WorldInfo = 0x0018,
     MoveBackpackItem = 0x0990,
     ToggleEquipment = 0x0992,
+    WearEquipment = 0x0998,
+    TakeOffEquipment = 0x099A,
     ClientQuickbar = 0x09AE,
     TalkToNpc = 0x0A58,
     RequestQuestMarkers = 0x0A59,

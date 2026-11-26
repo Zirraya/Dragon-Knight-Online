@@ -174,19 +174,24 @@ internal sealed partial class WorldSession(WorldCharacter character)
 
     internal byte[][] ToggleEquipment(ReadOnlySpan<byte> packet)
     {
-        if (packet.Length != 17 || packet[8] != 2
-            || BinaryPrimitives.ReadUInt16BigEndian(packet[9..]) != 1
-            || BinaryPrimitives.ReadInt32BigEndian(packet[13..]) != 0)
+        if (packet.Length < 13)
             return [];
 
-        ushort tag = BinaryPrimitives.ReadUInt16BigEndian(packet[11..]);
-        if (tag is < 0x4001 or > 0x400F)
+        byte? equipmentSlot = FindEquipmentSlotTag(packet);
+        if (equipmentSlot is not byte slot)
             return [];
 
-        var result = CharacterRepository.TryToggleEquipment(character.Id, (byte)(tag - 0x4000),
+        var result = CharacterRepository.TryToggleEquipment(character.Id, character.Template, slot,
             WorldPackets.BackpackPageSize * WorldPackets.BackpackPageCount);
         if (result is null)
-            return [];
+        {
+            result = ToggleEquipmentFromSession(slot);
+            if (result is null || !CharacterRepository.TrySaveEquipmentState(character.Id, result.Item))
+            {
+                Console.WriteLine($"Экипировка персонажа {character.Id}: слот {slot} не найден или рюкзак заполнен.");
+                return [];
+            }
+        }
 
         inventory[result.Item.Slot] = result.Item;
         var snapshot = character with { Inventory = inventory.Values.ToArray() };
@@ -198,9 +203,62 @@ internal sealed partial class WorldSession(WorldCharacter character)
             GetDragonSlots(),
             WorldPackets.CreateEquipmentDetails(character.Id, equipment, tick),
             WorldPackets.CreateEquipmentList(snapshot, equipment, tick),
-            WorldPackets.CreateEquipmentSlotFlags(),
             WorldPackets.CreateEquipmentItemList(character.Id, equipment)
         ];
+    }
+
+    private static byte? FindEquipmentSlotTag(ReadOnlySpan<byte> packet)
+    {
+        for (int offset = LoginPackets.HeaderSize; offset + sizeof(ushort) <= packet.Length; offset++)
+        {
+            ushort bigEndian = BinaryPrimitives.ReadUInt16BigEndian(packet[offset..]);
+            if (bigEndian is >= 0x4001 and <= 0x400F)
+                return (byte)(bigEndian - 0x4000);
+
+            ushort littleEndian = BinaryPrimitives.ReadUInt16LittleEndian(packet[offset..]);
+            if (littleEndian is >= 0x4001 and <= 0x400F)
+                return (byte)(littleEndian - 0x4000);
+        }
+
+        return null;
+    }
+
+    private EquipmentToggleResult? ToggleEquipmentFromSession(byte equipmentSlot)
+    {
+        var item = inventory.Values.FirstOrDefault(candidate =>
+            candidate.EquipmentSlot == equipmentSlot && candidate.IsEquipped)
+            ?? inventory.Values.FirstOrDefault(candidate =>
+                candidate.EquipmentSlot == equipmentSlot && candidate.BackpackSlot.HasValue);
+
+        if (item is null)
+        {
+            var definition = StarterEquipment.ForTemplate(character.Template)
+                .FirstOrDefault(candidate => candidate.EquipmentSlot == equipmentSlot);
+            if (definition is null)
+                return null;
+
+            ushort instanceSlot = (ushort)Enumerable.Range(2, ushort.MaxValue - 1)
+                .First(index => !inventory.ContainsKey((ushort)index));
+            item = definition with { Slot = instanceSlot };
+            inventory[item.Slot] = item;
+        }
+
+        if (item.IsEquipped)
+        {
+            var occupied = inventory.Values.Where(candidate => candidate.BackpackIndex <
+                    WorldPackets.BackpackPageSize * WorldPackets.BackpackPageCount)
+                .Select(candidate => candidate.BackpackIndex).ToHashSet();
+            int destination = Enumerable.Range(0, WorldPackets.BackpackPageSize * WorldPackets.BackpackPageCount)
+                .FirstOrDefault(index => !occupied.Contains((ushort)index), -1);
+            if (destination < 0)
+                return null;
+
+            return new EquipmentToggleResult(item with { BackpackSlot = (ushort)destination }, false);
+        }
+
+        return item.BackpackSlot.HasValue
+            ? new EquipmentToggleResult(item with { BackpackSlot = null }, true)
+            : null;
     }
 
     internal void SaveQuickbar(ReadOnlySpan<byte> packet)

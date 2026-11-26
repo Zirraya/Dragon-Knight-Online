@@ -3,7 +3,12 @@
 
 namespace DragonKnightServer.Database;
 
-public record LoginCharacter(string Name, int Level, int Map, int Template, byte[]? Appearance);
+public readonly record struct LoginEquipment(byte Slot, ushort ItemId, bool Equipped);
+
+public record LoginCharacter(string Name, int Level, int Map, int Template, byte[]? Appearance)
+{
+    public IReadOnlyList<LoginEquipment> Equipment { get; init; } = [];
+}
 
 internal record WorldCharacter(int Id, string Name, int Level, int Map, int Template, byte[]? Appearance,
     float X, float Y, float Z, int HitPoints, int Mana, int Experience)
@@ -98,9 +103,10 @@ public partial class CharacterRepository
     {
         using var db = Database.Open();
         EnsureCharacterColumns(db);
+        EnsureInventoryTable(db);
         using var cmd = db.CreateCommand();
         cmd.CommandText = """
-            SELECT name, COALESCE(level, 1), COALESCE(map, 1),
+            SELECT id, name, COALESCE(level, 1), COALESCE(map, 1),
                    COALESCE(class_id, 1), wire_appearance
             FROM characters
             WHERE account_id = @accountId
@@ -111,12 +117,45 @@ public partial class CharacterRepository
         cmd.Parameters.AddWithValue("@limit", limit);
 
         var characters = new List<LoginCharacter>();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        var characterIds = new List<int>();
         {
-            characters.Add(new LoginCharacter(reader.GetString(0), Math.Max(TestLevel, reader.GetInt32(1)),
-                reader.GetInt32(2), reader.GetInt32(3),
-                reader.IsDBNull(4) ? null : reader.GetFieldValue<byte[]>(4)));
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                characterIds.Add(reader.GetInt32(0));
+                characters.Add(new LoginCharacter(reader.GetString(1), Math.Max(TestLevel, reader.GetInt32(2)),
+                    reader.GetInt32(3), reader.GetInt32(4),
+                    reader.IsDBNull(5) ? null : reader.GetFieldValue<byte[]>(5)));
+            }
+        }
+
+        using var equipmentCommand = db.CreateCommand();
+        equipmentCommand.CommandText = """
+            SELECT equipment_slot, item_id, backpack_slot
+            FROM character_items
+            WHERE character_id = @characterId AND equipment_slot IS NOT NULL
+            ORDER BY equipment_slot
+            """;
+        for (int index = 0; index < characters.Count; index++)
+        {
+            equipmentCommand.Parameters.Clear();
+            equipmentCommand.Parameters.AddWithValue("@characterId", characterIds[index]);
+            var equipment = new List<LoginEquipment>();
+            using (var equipmentReader = equipmentCommand.ExecuteReader())
+            {
+                while (equipmentReader.Read())
+                    equipment.Add(new LoginEquipment(equipmentReader.GetByte(0), equipmentReader.GetUInt16(1),
+                        equipmentReader.IsDBNull(2)));
+            }
+
+            if (equipment.Count == 0)
+            {
+                equipment.AddRange(StarterEquipment.ForTemplate(characters[index].Template)
+                    .Where(item => item.EquipmentSlot is byte)
+                    .Select(item => new LoginEquipment(item.EquipmentSlot!.Value, item.ItemId, true)));
+            }
+
+            characters[index] = characters[index] with { Equipment = equipment };
         }
 
         return characters;
@@ -271,7 +310,8 @@ public partial class CharacterRepository
         }
     }
 
-    internal static EquipmentToggleResult? TryToggleEquipment(int characterId, byte equipmentSlot, int capacity)
+    internal static EquipmentToggleResult? TryToggleEquipment(int characterId, int template, byte equipmentSlot,
+        int capacity)
     {
         if (equipmentSlot == 0 || capacity <= 0)
             return null;
@@ -283,6 +323,7 @@ public partial class CharacterRepository
             using var transaction = db.BeginTransaction();
             using var cmd = db.CreateCommand();
             cmd.Transaction = transaction;
+            GrantStarterEquipment(cmd, characterId, template);
             var items = ReadInventory(cmd, characterId, forUpdate: true);
             var equipped = items.Find(item => item.EquipmentSlot == equipmentSlot && item.IsEquipped);
             CharacterItem? updated;
@@ -331,6 +372,39 @@ public partial class CharacterRepository
         {
             Console.WriteLine($"Не удалось переключить экипировку персонажа {characterId}. Код MySQL {ex.Number}.");
             return null;
+        }
+    }
+
+    internal static bool TrySaveEquipmentState(int characterId, CharacterItem item)
+    {
+        try
+        {
+            using var db = Database.Open();
+            EnsureInventoryTable(db);
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO character_items
+                    (character_id, slot, item_id, dragon_slot, backpack_slot, equipment_slot, quantity)
+                VALUES (@characterId, @slot, @itemId, @dragonSlot, @backpackSlot, @equipmentSlot, @quantity)
+                ON DUPLICATE KEY UPDATE
+                    item_id = VALUES(item_id),
+                    backpack_slot = VALUES(backpack_slot),
+                    equipment_slot = VALUES(equipment_slot),
+                    quantity = VALUES(quantity)
+                """;
+            cmd.Parameters.AddWithValue("@characterId", characterId);
+            cmd.Parameters.AddWithValue("@slot", item.Slot);
+            cmd.Parameters.AddWithValue("@itemId", item.ItemId);
+            cmd.Parameters.AddWithValue("@dragonSlot", (object?)item.DragonSlot ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@backpackSlot", (object?)item.BackpackSlot ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@equipmentSlot", (object?)item.EquipmentSlot ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@quantity", item.Quantity);
+            return cmd.ExecuteNonQuery() > 0;
+        }
+        catch (MySqlException ex)
+        {
+            Console.WriteLine($"Не удалось сохранить состояние экипировки персонажа {characterId}. Код MySQL {ex.Number}.");
+            return false;
         }
     }
 
@@ -498,6 +572,24 @@ public partial class CharacterRepository
         {
             if (existing.Any(item => item.EquipmentSlot == definition.EquipmentSlot))
                 continue;
+
+            var legacy = existing.FirstOrDefault(item => item.ItemId == definition.ItemId
+                && item.EquipmentSlot is null);
+            if (legacy is not null)
+            {
+                cmd.Parameters.Clear();
+                cmd.CommandText = """
+                    UPDATE character_items
+                    SET equipment_slot = @equipmentSlot
+                    WHERE character_id = @characterId AND slot = @slot
+                    """;
+                cmd.Parameters.AddWithValue("@equipmentSlot", definition.EquipmentSlot!.Value);
+                cmd.Parameters.AddWithValue("@characterId", characterId);
+                cmd.Parameters.AddWithValue("@slot", legacy.Slot);
+                cmd.ExecuteNonQuery();
+                existing.Add(legacy with { EquipmentSlot = definition.EquipmentSlot });
+                continue;
+            }
 
             while (usedSlots.Contains(nextSlot))
                 nextSlot = checked((ushort)(nextSlot + 1));

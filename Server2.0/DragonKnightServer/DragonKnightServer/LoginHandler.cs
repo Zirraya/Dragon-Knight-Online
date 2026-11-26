@@ -49,6 +49,7 @@ public static class LoginHandler
         {
             Console.WriteLine($"Ошибка в LoginHandler: {ex.Message}");
             Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            await SendLoginError(client);
         }
     }
 

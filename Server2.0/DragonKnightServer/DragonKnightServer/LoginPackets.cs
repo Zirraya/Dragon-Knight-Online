@@ -58,7 +58,7 @@ internal static class LoginPackets
             }
 
             WriteString(writer, "map" + character.Map.ToString("D3", CultureInfo.InvariantCulture));
-            writer.Write(new byte[12]);
+            WritePreviewEquipment(writer, character.Equipment);
         }
 
         // В дампе после двух записей семь нулевых байтов и завершающий флаг 1.
@@ -68,6 +68,19 @@ internal static class LoginPackets
         byte[] packet = stream.ToArray();
         WriteHeader(packet, opcode);
         return packet;
+    }
+
+    private static void WritePreviewEquipment(BinaryWriter writer, IReadOnlyList<LoginEquipment> equipment)
+    {
+        // Запись выбора персонажа содержит шесть предметов для слотов 1–6.
+        var items = equipment.Where(item => item.Equipped)
+            .GroupBy(item => item.Slot)
+            .ToDictionary(group => group.Key, group => group.Last().ItemId);
+        for (byte slot = 1; slot <= 6; slot++)
+        {
+            ushort itemId = items.GetValueOrDefault(slot);
+            writer.Write(BinaryPrimitives.ReverseEndianness(itemId));
+        }
     }
 
     internal static string? ReadCharacterName(ReadOnlySpan<byte> packet)

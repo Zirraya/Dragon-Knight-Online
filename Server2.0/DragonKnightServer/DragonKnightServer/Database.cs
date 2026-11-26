@@ -4,7 +4,7 @@ namespace DragonKnightServer.Database;
 
 public static class Database
 {
-    // Поменяйте пароль на ваш
+    // Поменяйте пароль на ваш как и назвние бд и ее хост
     private static string connectionString =
         "Server=localhost;" +
         "Database=dragonknightonline;" +

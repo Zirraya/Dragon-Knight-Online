@@ -244,7 +244,7 @@ internal static partial class WorldPackets
         byte dragonType = DragonSlotType(itemId);
         if (item?.EquipmentSlot is byte && item.BackpackSlot.HasValue)
         {
-            WriteEquipmentInventorySlot(writer, characterId, slot, item);
+            WriteEquipmentInventorySlot(writer, characterId, item);
         }
         else if (dragonType == 0)
         {
@@ -276,11 +276,9 @@ internal static partial class WorldPackets
         writer.Write((byte)0);
     }
 
-    private static void WriteEquipmentInventorySlot(BinaryWriter writer, int characterId, ushort slot,
-        CharacterItem item)
+    private static void WriteEquipmentInventorySlot(BinaryWriter writer, int characterId, CharacterItem item)
     {
         int instanceId = EquipmentInstanceId(characterId, item.EquipmentSlot!.Value);
-        WriteUInt16(writer, slot);
         writer.Write((byte)1);
         WriteUInt16(writer, 36);
         writer.Write(BitConverter.GetBytes(characterId));
