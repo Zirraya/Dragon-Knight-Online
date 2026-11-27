@@ -66,9 +66,62 @@ internal static partial class WorldPackets
             // this count when it attaches the progress packet to the journal.
             WriteUInt16(writer, 5);
             int tailPadding = quest.Id == 114001 ? 223 : 246;
-            writer.Write(new byte[tailPadding]);
+            WriteQuestTail(writer, quest, tailPadding);
             WriteInt32(writer, Environment.TickCount);
         });
+
+    private static void WriteQuestTail(BinaryWriter writer, WorldQuest quest, int length)
+    {
+        using var objectives = new MemoryStream();
+        using (var objectiveWriter = new BinaryWriter(objectives, QuestEncoding, leaveOpen: true))
+        {
+            for (int index = 0; index < 5; index++)
+            {
+                bool target = index == 0 && quest.TargetName is not null;
+                WriteInt32(objectiveWriter, target ? quest.TargetX / 100 : 0);
+                WriteInt32(objectiveWriter, target ? quest.TargetY / 100 : 0);
+                WriteInt32(objectiveWriter, target ? quest.Monster == 0 ? 8 : 16 : 0);
+                WriteQuestString(objectiveWriter, target ? quest.TargetName! : string.Empty);
+            }
+        }
+
+        byte[] objectiveBytes = objectives.ToArray();
+        writer.Write(objectiveBytes);
+
+        var rewardItems = quest.RewardItems.Take(6).ToArray();
+        bool hasChoices = rewardItems.Length > 1;
+        int rewardHeaderLength = hasChoices ? 14 : 16;
+        int fixedItemMetadataLength = hasChoices ? 12 : 14;
+        int rewardSectionLength = rewardHeaderLength + 4 + 2 + fixedItemMetadataLength
+            + Math.Max(0, rewardItems.Length - 1) * 6 + 2 * sizeof(int);
+        int padding = Math.Max(0, length - objectiveBytes.Length - rewardSectionLength);
+        WriteUInt16(writer, 1);
+        writer.Write(new byte[rewardHeaderLength - sizeof(ushort)]);
+        WriteInt32(writer, rewardItems[0]);
+        WriteUInt16(writer, quest.RewardItemCount);
+        WriteUInt16(writer, 1);
+        WriteInt32(writer, 1);
+        WriteInt32(writer, 0);
+        if (!hasChoices)
+        {
+            WriteUInt16(writer, 0x0C00);
+            WriteUInt16(writer, 0x0100);
+        }
+        else
+            writer.Write(new byte[2]);
+        foreach (ushort itemId in rewardItems.Skip(1))
+        {
+            WriteInt32(writer, itemId);
+            WriteUInt16(writer, quest.RewardItemCount);
+        }
+        WriteInt32(writer, quest.EffectiveExperience);
+        WriteInt32(writer, quest.Reward);
+        writer.Write(new byte[padding]);
+
+        int written = objectiveBytes.Length + rewardSectionLength + padding;
+        if (written < length)
+            writer.Write(new byte[length - written]);
+    }
 
     internal static byte[] CreateQuestOffer(WorldQuest quest, QuestProgress progress, bool completed)
         => Build(completed ? Opcode.QuestTurnIn : Opcode.QuestOffer, writer =>

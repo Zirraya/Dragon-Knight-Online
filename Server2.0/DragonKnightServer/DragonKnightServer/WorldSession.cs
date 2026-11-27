@@ -15,24 +15,61 @@ internal sealed partial class WorldSession(WorldCharacter character)
     private readonly IReadOnlyList<WorldNpc> npcs = NpcPopulation.ForMap(character.Map);
     private readonly HashSet<int> visibleNpcs = [];
     private readonly Dictionary<ushort, CharacterItem> inventory = character.Inventory.ToDictionary(item => item.Slot);
+    private int level = character.Level;
+    private int experience = character.Experience;
+    private int hitPoints = character.HitPoints;
+    private int mana = character.Mana;
     private byte[]? quickbar = character.Quickbar;
     private CharacterItem? companion;
     private ushort? pendingBattleDragonSlot;
+    private ushort? pendingFeedItemSlot;
     private bool positionChanged;
     private bool moving;
     private readonly Dictionary<int, QuestProgress> quests = character.Quests.ToDictionary(pair => pair.Key, pair => pair.Value);
     private readonly ushort faction = CharacterOrigins.ReadFaction(character.Appearance ?? []);
     private int DragonId => (IsMounted ? 0x007A0000 : 0x007B0000) + character.Id;
-    private bool IsMounted => companion?.ItemId == CharacterRepository.ElvenDragonItem;
+    private bool IsMounted => companion?.ItemId == CharacterRepository.ElvenDragonItem
+        || companion is { } item && CharacterRepository.DragonContractItems.Contains(item.ItemId);
     internal Task? BattleDragonCastDelay { get; private set; }
+
+    private WorldCharacter CurrentCharacter => character with
+    {
+        Level = level,
+        Experience = experience,
+        HitPoints = hitPoints,
+        Mana = mana
+    };
+
+    private byte[][] GainExperience(int amount)
+    {
+        var result = CharacterRepository.TryAddExperience(character.Id, character.Template, amount);
+        if (result is not { } gain)
+            return [];
+
+        level = gain.Level;
+        experience = gain.Experience;
+        hitPoints = gain.HitPoints;
+        mana = gain.Mana;
+        return [WorldPackets.CreatePlayerProgress(CurrentCharacter)];
+    }
 
     internal static ushort[] GetPlayerSkills(int template) => template switch
     {
-        1 or 6 => [1, 3061, 1301, 1341],
-        2 or 7 => [1, 3061, 1921, 1741],
-        3 or 8 => [1, 3021, 881, 901, 1201],
-        4 or 9 => [1, 3081, 21, 121, 141],
-        5 or 10 => [1, 3081, 461, 481],
+        1 or 6 => [1, 3061, 9981, 20241, 5701, 1301, 1341, 1381, 1321, 2261, 1401,
+            1421, 1581, 1561, 1361, 1441, 1501, 1481, 1621, 1521, 20081, 1681, 2281,
+            20221, 1661, 1701, 3921, 3901, 3881, 3941, 3961, 3981],
+        2 or 7 => [1, 3061, 9981, 20261, 5721, 1921, 1741, 2301, 1761, 1721, 1821,
+            1881, 20101, 1781, 2021, 1841, 2321, 1981, 2061, 1961, 20121, 2041, 2081,
+            2001, 1901, 2101, 3921, 3901, 3881, 3941, 3961, 3981],
+        3 or 8 => [1, 3021, 9981, 20281, 21321, 881, 901, 1041, 1221, 921, 1201, 20041,
+            2161, 1001, 2201, 20061, 1261, 1141, 1241, 1021, 2221, 2181, 1161, 20141,
+            2241, 1281, 3921, 3901, 3881, 3941, 3961, 3981],
+        4 or 9 => [1, 3081, 9981, 20321, 21301, 21, 141, 2121, 20001, 121, 61, 20161,
+            401, 201, 281, 301, 241, 261, 641, 381, 161, 321, 361, 181, 421, 441,
+            3921, 3901, 3881, 3941, 3961, 3981],
+        5 or 10 => [1, 3081, 9981, 20301, 21301, 461, 481, 581, 781, 601, 661, 20021,
+            541, 681, 221, 721, 821, 621, 20181, 761, 701, 2141, 801, 20201, 841, 861,
+            3921, 3901, 3881, 3941, 3961, 3981],
         _ => [1]
     };
 
@@ -125,6 +162,23 @@ internal sealed partial class WorldSession(WorldCharacter character)
 
     internal byte[] GetDragonSlots() =>
         WorldPackets.CreateDragonSlots(character.Id, inventory.Values, IsMounted ? companion!.Slot : null);
+
+    internal byte[][] RefreshDragonSatiety()
+    {
+        var refreshed = CharacterRepository.RefreshInventory(character.Id);
+        var changed = false;
+        foreach (var item in refreshed)
+        {
+            if (!inventory.TryGetValue(item.Slot, out var current))
+                continue;
+            if (current.DragonSatiety != item.DragonSatiety || current.DragonSatietyUpdated != item.DragonSatietyUpdated)
+                changed = true;
+            inventory[item.Slot] = item;
+        }
+        return changed
+            ? [WorldPackets.CreateInventory(character.Id, silver, inventory.Values, Environment.TickCount), GetDragonSlots()]
+            : [];
+    }
 
     internal byte[][] MoveBackpackItem(ReadOnlySpan<byte> packet)
     {
@@ -287,6 +341,16 @@ internal sealed partial class WorldSession(WorldCharacter character)
         byte destination = packet[11];
         byte action = packet[12];
         bool remove = action == 1;
+        if (ReadBackpackIndex(bag, slot) is ushort feedIndex
+            && FindBackpackItem(feedIndex) is { } feed
+            && CharacterRepository.DragonFeedItems.Contains(feed.ItemId))
+        {
+            if (action > 1)
+                return [];
+            pendingFeedItemSlot = remove ? null : feed.Slot;
+            return [WorldPackets.CreateDragonSlotResult(bag, slot, destination, remove,
+                itemType: WorldPackets.GrowingDragonType)];
+        }
         var item = FindDragonItem(bag, slot);
         byte itemType = item is null ? (byte)0 : WorldPackets.DragonSlotType(item.ItemId);
         int slotCount = itemType == WorldPackets.BattleDragonType ? 6 : 5;
@@ -309,19 +373,114 @@ internal sealed partial class WorldSession(WorldCharacter character)
         return [result, GetDragonSlots()];
     }
 
+    internal byte[][] FeedDragon(ReadOnlySpan<byte> packet)
+    {
+        var egg = inventory.Values.FirstOrDefault(item => item.DragonSlot is byte
+            && CharacterRepository.IsGrowingDragon(item.ItemId));
+        egg ??= companion;
+        egg ??= inventory.Values.FirstOrDefault(item =>
+            CharacterRepository.DragonContractItems.Contains(item.ItemId));
+        var food = pendingFeedItemSlot is ushort foodSlot
+            ? inventory.GetValueOrDefault(foodSlot)
+            : inventory.Values.FirstOrDefault(item => CharacterRepository.DragonFeedItems.Contains(item.ItemId)
+                && item.BackpackIndex < WorldPackets.BackpackPageSize * WorldPackets.BackpackPageCount);
+        if (egg is null || food is null)
+            return [];
+
+        byte growthGain = CharacterRepository.DragonFeedGrowth.GetValueOrDefault(food.ItemId);
+        byte satietyGain = CharacterRepository.DragonFeedSatiety.GetValueOrDefault(food.ItemId);
+        if (growthGain == 0 && satietyGain == 0)
+            return [];
+        var fed = CharacterRepository.TryFeedDragon(character.Id, egg, food, growthGain, satietyGain);
+        if (fed is null)
+            return [];
+
+        var refreshed = CharacterRepository.RefreshInventory(character.Id);
+        inventory.Clear();
+        foreach (var item in refreshed)
+            inventory[item.Slot] = item;
+        if (companion is { } active && inventory.TryGetValue(active.Slot, out var refreshedCompanion))
+            companion = refreshedCompanion;
+        pendingFeedItemSlot = food.Quantity > 1 ? food.Slot : null;
+        return [WorldPackets.CreateInventory(character.Id, silver, inventory.Values, Environment.TickCount),
+            GetDragonSlots()];
+    }
+
+    internal byte[][] EvolveDragon(ReadOnlySpan<byte> packet)
+    {
+        if (packet.Length < 2)
+            return [];
+
+        ushort selection = BinaryPrimitives.ReadUInt16BigEndian(packet[^2..]);
+        if (CharacterRepository.HatchlingDragonItems.Contains(selection))
+        {
+            var egg = inventory.Values.FirstOrDefault(item => item.ItemId == CharacterRepository.StarterDragonEgg
+                && item.DragonSlot is byte && item.DragonGrowth >= 100);
+            if (egg is null)
+                return [];
+            var hatched = CharacterRepository.TryHatchDragon(character.Id, egg, selection);
+            if (hatched is null)
+                return [];
+            inventory[hatched.Slot] = hatched;
+        }
+        else
+        {
+            var dragon = inventory.Values.FirstOrDefault(item => item.DragonGrowth >= 100
+                && CharacterRepository.DragonEvolutionItems.ContainsKey(item.ItemId));
+            if (dragon is null)
+                return [];
+            var evolved = CharacterRepository.TryEvolveDragon(character.Id, dragon);
+            if (evolved is null)
+                return [];
+            inventory[evolved.Slot] = evolved;
+            return [WorldPackets.CreateDragonEvolutionResult(character.Id, dragon),
+                WorldPackets.CreateInventory(character.Id, silver, inventory.Values, Environment.TickCount),
+                GetDragonSlots()];
+        }
+        return [WorldPackets.CreateInventory(character.Id, silver, inventory.Values, Environment.TickCount),
+            GetDragonSlots()];
+    }
+
     internal byte[][] Call(ReadOnlySpan<byte> packet)
     {
         byte bag = packet[8];
         ushort slot = BinaryPrimitives.ReadUInt16BigEndian(packet[9..]);
         byte action = packet[11];
+        Console.WriteLine($"CallDragon: bag={bag}, slot={slot}, action={action}, size={packet.Length}");
         // При вызове с земли передаётся один актёр, а при использовании верхом клиент может дописать второй ID.
-        if (action > 1 || !IsDragonActionActor(BinaryPrimitives.ReadInt32BigEndian(packet[12..]))
+        if (action > 8 || !IsDragonActionActor(BinaryPrimitives.ReadInt32BigEndian(packet[12..]))
             || (packet.Length == 20 && !IsDragonActionActor(BinaryPrimitives.ReadInt32BigEndian(packet[16..]))))
             return [];
 
         var item = bag == 0 ? FindAssignedDragon(slot) : FindDragonItem(bag, slot);
+        if (item is null && action <= 1)
+            item = inventory.Values.FirstOrDefault(candidate => candidate.ItemId == CharacterRepository.StarterDragonEgg
+                && candidate.DragonSlot is byte)
+                ?? inventory.Values.FirstOrDefault(candidate =>
+                    CharacterRepository.HatchlingDragonItems.Contains(candidate.ItemId)
+                    || CharacterRepository.DragonContractItems.Contains(candidate.ItemId));
+        if (action >= 2)
+        {
+            var egg = item?.ItemId == CharacterRepository.StarterDragonEgg
+                ? item : inventory.Values.FirstOrDefault(candidate => candidate.ItemId == CharacterRepository.StarterDragonEgg
+                    && candidate.DragonSlot is byte);
+            var hatched = egg is null ? null : CharacterRepository.TryHatchDragon(character.Id, egg,
+                CharacterRepository.HatchlingDragonItems[action - 2]);
+            if (hatched is null)
+                return [];
+            inventory[hatched.Slot] = hatched;
+            if (companion?.Slot == hatched.Slot)
+                companion = null;
+            return [WorldPackets.CreateInventory(character.Id, silver, inventory.Values, Environment.TickCount), GetDragonSlots()];
+        }
         if (item is null)
             return [];
+        if (action is 0 or 1 && item.ItemId == CharacterRepository.StarterDragonEgg
+            && item.DragonGrowth >= 100)
+        {
+            int index = item.BackpackIndex;
+            return OpenHatchSelection(item);
+        }
         if (action == 1)
             return UseDragonItem(item);
         if (pendingBattleDragonSlot == item.Slot)
@@ -352,13 +511,21 @@ internal sealed partial class WorldSession(WorldCharacter character)
 
         ushort skill = BinaryPrimitives.ReadUInt16BigEndian(packet[8..]);
         int actorId = packet.Length == 19 ? BinaryPrimitives.ReadInt32BigEndian(packet[15..]) : character.Id;
-        if (skill is WorldPackets.BattleDragonSummonSkill or 28096)
+        if (skill is WorldPackets.BattleDragonSummonSkill or 28096 or 28001)
         {
             if (!IsDragonActionActor(actorId))
                 return [];
-            ushort itemId = skill == WorldPackets.BattleDragonSummonSkill
-                ? CharacterRepository.ElvenDragonItem : CharacterRepository.YoungSilverDragonItem;
-            var item = inventory.Values.FirstOrDefault(candidate => candidate.ItemId == itemId);
+            var item = skill == WorldPackets.BattleDragonSummonSkill
+                ? inventory.Values.FirstOrDefault(candidate => candidate.ItemId == CharacterRepository.ElvenDragonItem)
+                : skill == 28001
+                    ? inventory.Values.FirstOrDefault(candidate => CharacterRepository.DragonContractItems.Contains(candidate.ItemId))
+                    : inventory.Values.FirstOrDefault(candidate => candidate.ItemId == CharacterRepository.StarterDragonEgg
+                        && candidate.DragonSlot is byte && candidate.DragonGrowth >= 100)
+                        ?? inventory.Values.FirstOrDefault(candidate => candidate.ItemId == CharacterRepository.YoungSilverDragonItem
+                            || CharacterRepository.HatchlingDragonItems.Contains(candidate.ItemId)
+                            || CharacterRepository.DragonContractItems.Contains(candidate.ItemId));
+            if (skill == 28096 && item?.ItemId == CharacterRepository.StarterDragonEgg)
+                return OpenHatchSelection(item);
             return item is null ? [] : UseDragonItem(item);
         }
 
@@ -391,6 +558,9 @@ internal sealed partial class WorldSession(WorldCharacter character)
             injuredCreatures[target] = newHealth;
 
         var hit = WorldPackets.CreateHit(IsMounted ? DragonId : character.Id, creature, skill, damage, newHealth);
+        var experiencePackets = newHealth == 0
+            ? GainExperience(Math.Max(1, creature.Template.Level * 5))
+            : [];
         var questMarkers = newHealth == 0 ? QuestStatePackets() : [];
         var questJournal = newHealth == 0 ? QuestJournalPackets() : [];
         if (newHealth == 0 && MonsterLoot.Roll(creature.Template.Id, Random.Shared.Next(100)) is { } drop
@@ -398,10 +568,10 @@ internal sealed partial class WorldSession(WorldCharacter character)
                 is { } storedItem)
         {
             inventory[storedItem.Slot] = storedItem;
-            return [.. hit, .. questJournal, .. questMarkers,
+            return [.. hit, .. experiencePackets, .. questJournal, .. questMarkers,
                 WorldPackets.CreateBackpackUpdate(character.Id, silver, (storedItem.BackpackIndex, storedItem))];
         }
-        return [.. hit, .. questJournal, .. questMarkers];
+        return [.. hit, .. experiencePackets, .. questJournal, .. questMarkers];
     }
 
     internal byte[][] CollectCreatureRespawns(long now)
@@ -441,7 +611,8 @@ internal sealed partial class WorldSession(WorldCharacter character)
         if (ReadBackpackIndex(bag, slot) is not ushort index)
             return null;
         var item = FindBackpackItem(index);
-        return item is not null && WorldPackets.DragonSlotType(item.ItemId) != 0 ? item : null;
+        return item is not null && (WorldPackets.DragonSlotType(item.ItemId) != 0
+            || CharacterRepository.DragonContractItems.Contains(item.ItemId)) ? item : null;
     }
 
     private bool IsDragonActionActor(int actorId) =>
@@ -451,7 +622,9 @@ internal sealed partial class WorldSession(WorldCharacter character)
     {
         // Клиент передаёт индекс ячейки выращивания или тег ячейки боевого дракона (50–55).
         if (slotTag < 5)
-            return inventory.Values.FirstOrDefault(item => item.ItemId == CharacterRepository.YoungSilverDragonItem
+            return inventory.Values.FirstOrDefault(item => (item.ItemId == CharacterRepository.YoungSilverDragonItem
+                || item.ItemId == CharacterRepository.StarterDragonEgg
+                || CharacterRepository.HatchlingDragonItems.Contains(item.ItemId))
                 && item.DragonSlot == slotTag);
         int battleSlot = slotTag - WorldPackets.FirstBattleDragonSlotTag;
         if (battleSlot < 0 || battleSlot > WorldPackets.ActiveBattleDragonSlot)
@@ -475,6 +648,8 @@ internal sealed partial class WorldSession(WorldCharacter character)
 
     private byte[][] UseDragonItem(CharacterItem item)
     {
+        if (item.ItemId == CharacterRepository.StarterDragonEgg)
+            return [];
         if (companion?.Slot == item.Slot)
             return RecallDragon();
         if (pendingBattleDragonSlot == item.Slot)
@@ -485,6 +660,18 @@ internal sealed partial class WorldSession(WorldCharacter character)
         pendingBattleDragonSlot = item.Slot;
         BattleDragonCastDelay = Task.Delay(WorldPackets.BattleDragonSummonTimeMs);
         return [WorldPackets.CreateBattleDragonCast(character.Id, position, 0xFF)];
+    }
+
+    private byte[][] OpenHatchSelection(CharacterItem egg)
+    {
+        int index = egg.BackpackIndex;
+        return [WorldPackets.CreateDragonSlotResult(
+            (byte)(WorldPackets.FirstBackpackPage + index / WorldPackets.BackpackPageSize),
+            (ushort)(index % WorldPackets.BackpackPageSize), egg.DragonSlot ?? 0,
+            remove: true, itemType: WorldPackets.GrowingDragonType, result: 0),
+            WorldPackets.CreateInventory(character.Id, silver, inventory.Values, Environment.TickCount),
+            GetDragonSlots(),
+            WorldPackets.CreateHatchOptions(character.Id, egg)];
     }
 
     private byte[][] RecallDragon() => [.. ChangeDragon(null), GetDragonSlots()];
@@ -516,10 +703,10 @@ internal sealed partial class WorldSession(WorldCharacter character)
         companion = item;
         if (item is not null)
         {
-            packets.Add(WorldPackets.CreateDragonSpawn(DragonId, position, IsMounted));
+            packets.Add(WorldPackets.CreateDragonSpawn(DragonId, position, IsMounted, item.ItemId));
             if (IsMounted)
             {
-                packets.Add(WorldPackets.CreateDragonAttributes(DragonId));
+                packets.Add(WorldPackets.CreateDragonAttributes(DragonId, item.ItemId));
                 packets.Add(WorldPackets.CreateDragonLink(character.Id, DragonId));
                 packets.Add(WorldPackets.CreateLearnedSkills(DragonId, WorldPackets.DragonSkills));
             }

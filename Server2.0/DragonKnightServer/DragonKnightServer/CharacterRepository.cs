@@ -20,7 +20,8 @@ internal record WorldCharacter(int Id, string Name, int Level, int Map, int Temp
 }
 
 internal record CharacterItem(ushort Slot, ushort ItemId, byte? DragonSlot = null, ushort? BackpackSlot = null,
-    ushort Quantity = 1, byte? EquipmentSlot = null)
+    ushort Quantity = 1, byte? EquipmentSlot = null, byte DragonGrowth = 0, byte DragonSatiety = 100,
+    DateTime? DragonSatietyUpdated = null)
 {
     public ushort BackpackIndex => BackpackSlot ?? (EquipmentSlot.HasValue ? ushort.MaxValue : Slot);
     public bool IsEquipped => EquipmentSlot.HasValue && !BackpackSlot.HasValue;
@@ -36,7 +37,37 @@ public partial class CharacterRepository
     internal const ushort YoungSilverDragonItem = 58508;
     internal const ushort ElvenDragonItem = 41033;
     internal const ushort StarterDragonEgg = 58523;
-    internal const int TestLevel = 85;
+    internal const ushort StarterDragonEssenceItem = 38023;
+    internal const ushort StarterDragonEssenceQuantity = 2;
+    internal static readonly ushort[] HatchlingDragonItems = [58503, 58504, 58505, 58506, 58507, 58508, 58509];
+    internal static readonly IReadOnlyDictionary<ushort, ushort> DragonEvolutionItems = new Dictionary<ushort, ushort>
+    {
+        [58503] = 41019,
+        [58504] = 41021,
+        [58505] = 41020,
+        [58506] = 41024,
+        [58507] = 41018,
+        [58508] = 41023,
+        [58509] = 41022
+    };
+    internal static readonly HashSet<ushort> DragonContractItems =
+        [41018, 41019, 41020, 41021, 41022, 41023, 41024];
+    internal static readonly HashSet<ushort> DragonFeedItems =
+        [38001, 38021, 38022, 38023, 54391, 54392, 54427, 54441, 54477, 54892];
+    internal static readonly IReadOnlyDictionary<ushort, byte> DragonFeedGrowth = new Dictionary<ushort, byte>
+    {
+        [38022] = 20, [38023] = 40, [54391] = 40, [54392] = 40,
+        [54427] = 20, [54441] = 30, [54477] = 30
+    };
+    internal static readonly IReadOnlyDictionary<ushort, byte> DragonFeedSatiety = new Dictionary<ushort, byte>
+    {
+        [38001] = 10, [38021] = 10, [54892] = 10,
+        [38022] = 20, [38023] = 20, [54427] = 20
+    };
+
+    internal static bool IsGrowingDragon(ushort itemId) => itemId == StarterDragonEgg
+        || itemId == YoungSilverDragonItem || HatchlingDragonItems.Contains(itemId)
+        || DragonContractItems.Contains(itemId);
 
     internal static bool Delete(string username, string characterName)
     {
@@ -123,7 +154,8 @@ public partial class CharacterRepository
             while (reader.Read())
             {
                 characterIds.Add(reader.GetInt32(0));
-                characters.Add(new LoginCharacter(reader.GetString(1), Math.Max(TestLevel, reader.GetInt32(2)),
+                characters.Add(new LoginCharacter(reader.GetString(1),
+                    Math.Clamp(reader.GetInt32(2), 1, CharacterProgression.MaxLevel),
                     reader.GetInt32(3), reader.GetInt32(4),
                     reader.IsDBNull(5) ? null : reader.GetFieldValue<byte[]>(5)));
             }
@@ -203,6 +235,7 @@ public partial class CharacterRepository
         GrantStarterItems(cmd, characterId);
         GrantStarterEquipment(cmd, characterId, template);
         GrantStarterEgg(cmd, characterId);
+        GrantStarterDragonEssence(cmd, characterId);
         transaction.Commit();
         return true;
     }
@@ -231,10 +264,13 @@ public partial class CharacterRepository
             if (!reader.Read())
                 return null;
 
-            character = new WorldCharacter(reader.GetInt32(0), reader.GetString(1), Math.Max(TestLevel, reader.GetInt32(2)),
+            int level = Math.Clamp(reader.GetInt32(2), 1, CharacterProgression.MaxLevel);
+            var progression = CharacterProgression.For(reader.GetInt32(4), level);
+            character = new WorldCharacter(reader.GetInt32(0), reader.GetString(1), level,
                 reader.GetInt32(3), reader.GetInt32(4), reader.IsDBNull(5) ? null : reader.GetFieldValue<byte[]>(5),
                 reader.GetFloat(6), reader.GetFloat(7), reader.GetFloat(8),
-                reader.GetInt32(9), reader.GetInt32(10), reader.GetInt32(11))
+                Math.Max(reader.GetInt32(9), progression.HitPoints),
+                Math.Max(reader.GetInt32(10), progression.Mana), reader.GetInt32(11))
             {
                 Quickbar = reader.IsDBNull(12) ? null : reader.GetFieldValue<byte[]>(12),
                 Silver = reader.GetInt32(13)
@@ -251,6 +287,13 @@ public partial class CharacterRepository
             using var transaction = db.BeginTransaction();
             cmd.Transaction = transaction;
             GrantStarterEgg(cmd, character.Id);
+            transaction.Commit();
+            cmd.Transaction = null;
+        }
+        using (var transaction = db.BeginTransaction())
+        {
+            cmd.Transaction = transaction;
+            GrantStarterDragonEssence(cmd, character.Id);
             transaction.Commit();
             cmd.Transaction = null;
         }
@@ -384,13 +427,16 @@ public partial class CharacterRepository
             using var cmd = db.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO character_items
-                    (character_id, slot, item_id, dragon_slot, backpack_slot, equipment_slot, quantity)
-                VALUES (@characterId, @slot, @itemId, @dragonSlot, @backpackSlot, @equipmentSlot, @quantity)
+                    (character_id, slot, item_id, dragon_slot, backpack_slot, equipment_slot, quantity, dragon_growth, dragon_satiety, dragon_satiety_updated)
+                VALUES (@characterId, @slot, @itemId, @dragonSlot, @backpackSlot, @equipmentSlot, @quantity, @dragonGrowth, @dragonSatiety, @dragonSatietyUpdated)
                 ON DUPLICATE KEY UPDATE
                     item_id = VALUES(item_id),
                     backpack_slot = VALUES(backpack_slot),
                     equipment_slot = VALUES(equipment_slot),
-                    quantity = VALUES(quantity)
+                    quantity = VALUES(quantity),
+                    dragon_growth = VALUES(dragon_growth),
+                    dragon_satiety = VALUES(dragon_satiety),
+                    dragon_satiety_updated = VALUES(dragon_satiety_updated)
                 """;
             cmd.Parameters.AddWithValue("@characterId", characterId);
             cmd.Parameters.AddWithValue("@slot", item.Slot);
@@ -399,6 +445,9 @@ public partial class CharacterRepository
             cmd.Parameters.AddWithValue("@backpackSlot", (object?)item.BackpackSlot ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@equipmentSlot", (object?)item.EquipmentSlot ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@quantity", item.Quantity);
+            cmd.Parameters.AddWithValue("@dragonGrowth", item.DragonGrowth);
+            cmd.Parameters.AddWithValue("@dragonSatiety", item.DragonSatiety);
+            cmd.Parameters.AddWithValue("@dragonSatietyUpdated", (object?)item.DragonSatietyUpdated ?? DateTime.UtcNow);
             return cmd.ExecuteNonQuery() > 0;
         }
         catch (MySqlException ex)
@@ -477,18 +526,66 @@ public partial class CharacterRepository
     {
         cmd.Parameters.Clear();
         cmd.CommandText = """
+            UPDATE character_items
+            SET dragon_satiety = 100, dragon_satiety_updated = UTC_TIMESTAMP()
+            WHERE character_id = @id AND dragon_satiety = 0
+              AND item_id IN (58523, 58503, 58504, 58505, 58506, 58507, 58508, 58509,
+                              41018, 41019, 41020, 41021, 41022, 41023, 41024)
+            """;
+        cmd.Parameters.AddWithValue("@id", characterId);
+        cmd.ExecuteNonQuery();
+        cmd.Parameters.Clear();
+        cmd.CommandText = """
             SELECT slot, item_id, dragon_slot, backpack_slot, quantity
-                   , equipment_slot
+                   , equipment_slot, dragon_growth, dragon_satiety, dragon_satiety_updated
             FROM character_items WHERE character_id = @id ORDER BY slot
             """ + (forUpdate ? " FOR UPDATE" : "");
         cmd.Parameters.AddWithValue("@id", characterId);
-        using var reader = cmd.ExecuteReader();
         var items = new List<CharacterItem>();
-        while (reader.Read())
-            items.Add(new CharacterItem(reader.GetUInt16(0), reader.GetUInt16(1),
-                reader.IsDBNull(2) ? null : reader.GetByte(2), reader.IsDBNull(3) ? null : reader.GetUInt16(3),
-                reader.GetUInt16(4), reader.IsDBNull(5) ? null : reader.GetByte(5)));
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+                items.Add(new CharacterItem(reader.GetUInt16(0), reader.GetUInt16(1),
+                    reader.IsDBNull(2) ? null : reader.GetByte(2), reader.IsDBNull(3) ? null : reader.GetUInt16(3),
+                    reader.GetUInt16(4), reader.IsDBNull(5) ? null : reader.GetByte(5),
+                    reader.IsDBNull(6) ? (byte)0 : reader.GetByte(6),
+                    reader.IsDBNull(7) ? (byte)100 : reader.GetByte(7),
+                    reader.IsDBNull(8) ? null : DateTime.SpecifyKind(reader.GetDateTime(8), DateTimeKind.Utc)));
+        }
+        ApplyDragonSatietyDecay(cmd, characterId, items);
         return items;
+    }
+
+    internal static IReadOnlyList<CharacterItem> RefreshInventory(int characterId)
+    {
+        using var db = Database.Open();
+        EnsureInventoryTable(db);
+        using var cmd = db.CreateCommand();
+        return ReadInventory(cmd, characterId);
+    }
+
+    private static void ApplyDragonSatietyDecay(MySqlCommand cmd, int characterId, List<CharacterItem> items)
+    {
+        DateTime now = DateTime.UtcNow;
+        foreach (var item in items.Where(item => item.DragonSlot.HasValue && IsGrowingDragon(item.ItemId)).ToArray())
+        {
+            DateTime updatedAt = item.DragonSatietyUpdated ?? now;
+            long elapsedMinutes = (long)(now - updatedAt).TotalMinutes;
+            if (elapsedMinutes <= 0)
+                continue;
+
+            byte satiety = (byte)Math.Max(0, item.DragonSatiety - Math.Min(100, elapsedMinutes));
+            DateTime newUpdatedAt = updatedAt.AddMinutes(elapsedMinutes);
+            cmd.Parameters.Clear();
+            cmd.CommandText = "UPDATE character_items SET dragon_satiety = @satiety, dragon_satiety_updated = @updatedAt WHERE character_id = @id AND slot = @slot";
+            cmd.Parameters.AddWithValue("@satiety", satiety);
+            cmd.Parameters.AddWithValue("@updatedAt", newUpdatedAt);
+            cmd.Parameters.AddWithValue("@id", characterId);
+            cmd.Parameters.AddWithValue("@slot", item.Slot);
+            cmd.ExecuteNonQuery();
+            int index = items.IndexOf(item);
+            items[index] = item with { DragonSatiety = satiety, DragonSatietyUpdated = newUpdatedAt };
+        }
     }
 
     private static CharacterItem InsertBackpackItem(MySqlCommand cmd, int characterId, List<CharacterItem> items,
@@ -498,8 +595,8 @@ public partial class CharacterRepository
         ushort slot = (ushort)Enumerable.Range(2, ushort.MaxValue - 1).First(id => !usedIds.Contains((ushort)id));
         cmd.Parameters.Clear();
         cmd.CommandText = """
-            INSERT INTO character_items (character_id, slot, item_id, backpack_slot, quantity)
-            VALUES (@id, @slot, @item, @destination, @quantity)
+            INSERT INTO character_items (character_id, slot, item_id, backpack_slot, quantity, dragon_growth, dragon_satiety, dragon_satiety_updated)
+            VALUES (@id, @slot, @item, @destination, @quantity, 0, 100, UTC_TIMESTAMP())
             """;
         cmd.Parameters.AddWithValue("@id", characterId);
         cmd.Parameters.AddWithValue("@slot", slot);
@@ -527,7 +624,8 @@ public partial class CharacterRepository
             using var db = Database.Open();
             using var cmd = db.CreateCommand();
             cmd.CommandText = """
-                UPDATE character_items SET dragon_slot = @dragonSlot
+                UPDATE character_items SET dragon_slot = @dragonSlot,
+                    dragon_satiety_updated = UTC_TIMESTAMP()
                 WHERE character_id = @characterId AND slot = @slot AND item_id = @item
                 """;
             cmd.Parameters.AddWithValue("@characterId", characterId);
@@ -639,6 +737,9 @@ public partial class CharacterRepository
             EnsureColumn(db, "character_items", "backpack_slot", "SMALLINT UNSIGNED NULL");
             EnsureColumn(db, "character_items", "quantity", "SMALLINT UNSIGNED NOT NULL DEFAULT 1");
             EnsureColumn(db, "character_items", "equipment_slot", "TINYINT UNSIGNED NULL");
+            EnsureColumn(db, "character_items", "dragon_growth", "TINYINT UNSIGNED NOT NULL DEFAULT 0");
+            EnsureColumn(db, "character_items", "dragon_satiety", "TINYINT UNSIGNED NOT NULL DEFAULT 100");
+            EnsureColumn(db, "character_items", "dragon_satiety_updated", "TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP");
             inventoryTableReady = true;
         }
     }
@@ -654,6 +755,7 @@ public partial class CharacterRepository
             EnsureColumn(db, "characters", "quickbar", "VARBINARY(4096) NULL");
             EnsureColumn(db, "characters", "silver", "INT NOT NULL DEFAULT 0");
             EnsureColumn(db, "characters", "starter_egg_granted", "BOOLEAN NOT NULL DEFAULT FALSE");
+            EnsureColumn(db, "characters", "starter_essence_granted", "BOOLEAN NOT NULL DEFAULT FALSE");
             characterColumnsReady = true;
         }
     }

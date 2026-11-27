@@ -158,8 +158,16 @@ public class ClientSession
                 await SendPackets(world.UseSkill(packet));
                 break;
 
-            case (ushort)Opcode.CallDragon when world is not null && size is 16 or 20:
+            case (ushort)Opcode.CallDragon when world is not null && size is >= 16 and <= 32:
                 await SendPackets(world.Call(packet));
+                break;
+
+            case (ushort)Opcode.FeedDragon when world is not null && size == 15:
+                await SendPackets(world.FeedDragon(packet));
+                break;
+
+            case (ushort)Opcode.Unknown0943 when world is not null && size == 19:
+                await SendPackets(world.EvolveDragon(packet));
                 break;
 
             case (ushort)Opcode.SetDragonSlot when world is not null && size == 13:
@@ -253,14 +261,31 @@ public class ClientSession
             // Поэтому копим байты и нарезаем их по длине из заголовка (big-endian).
             int have = 0;
             Task<int>? receive = null;
+            Task satietyTick = Task.Delay(TimeSpan.FromMinutes(1));
             while (client.Connected)
             {
                 receive ??= stream.ReadAsync(buffer, have, buffer.Length - have);
                 if (world?.BattleDragonCastDelay is { } castDelay)
                 {
-                    await Task.WhenAny(receive, castDelay);
+                    await Task.WhenAny(receive, castDelay, satietyTick);
                     if (castDelay.IsCompletedSuccessfully)
                         await SendPackets(world.CompleteBattleDragonCast());
+                    if (satietyTick.IsCompletedSuccessfully)
+                    {
+                        await SendPackets(world.RefreshDragonSatiety());
+                        satietyTick = Task.Delay(TimeSpan.FromMinutes(1));
+                    }
+                    if (!receive.IsCompleted)
+                        continue;
+                }
+                else if (world is not null && !receive.IsCompleted)
+                {
+                    await Task.WhenAny(receive, satietyTick);
+                    if (satietyTick.IsCompletedSuccessfully)
+                    {
+                        await SendPackets(world.RefreshDragonSatiety());
+                        satietyTick = Task.Delay(TimeSpan.FromMinutes(1));
+                    }
                     if (!receive.IsCompleted)
                         continue;
                 }

@@ -3,6 +3,14 @@
   "WorkspaceRootPath": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|c:\\projects\\dragon-knight-online\\server2.0\\dragonknightserver\\dragonknightserver\\characterrepository.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|solutionrelative:dragonknightserver\\characterrepository.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|c:\\projects\\dragon-knight-online\\server2.0\\dragonknightserver\\dragonknightserver\\characterorigins.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|solutionrelative:dragonknightserver\\characterorigins.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|c:\\projects\\dragon-knight-online\\server2.0\\dragonknightserver\\dragonknightserver\\worldquests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|solutionrelative:dragonknightserver\\worldquests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -38,11 +46,37 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 1,
+          "SelectedChildIndex": 0,
           "Children": [
             {
               "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "CharacterRepository.cs",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\CharacterRepository.cs",
+              "RelativeDocumentMoniker": "DragonKnightServer\\CharacterRepository.cs",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\CharacterRepository.cs",
+              "RelativeToolTip": "DragonKnightServer\\CharacterRepository.cs",
+              "ViewState": "AgIAACgBAAAAAAAAAAAgwDUBAAACAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-11-26T09:09:45.322Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
               "DocumentIndex": 1,
+              "Title": "CharacterOrigins.cs",
+              "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\CharacterOrigins.cs",
+              "RelativeDocumentMoniker": "DragonKnightServer\\CharacterOrigins.cs",
+              "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\CharacterOrigins.cs",
+              "RelativeToolTip": "DragonKnightServer\\CharacterOrigins.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-11-26T09:09:36.796Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
               "Title": "AllianceNpcs.tsv",
               "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\AllianceNpcs.tsv",
               "RelativeDocumentMoniker": "DragonKnightServer\\AllianceNpcs.tsv",
@@ -55,7 +89,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 2,
               "Title": "WorldQuests.cs",
               "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\WorldQuests.cs",
               "RelativeDocumentMoniker": "DragonKnightServer\\WorldQuests.cs",
@@ -68,7 +102,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 4,
               "Title": "WorldCreatures.tsv",
               "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\WorldCreatures.tsv",
               "RelativeDocumentMoniker": "DragonKnightServer\\WorldCreatures.tsv",
@@ -81,7 +115,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 6,
               "Title": "DragonEnvoys.tsv",
               "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\DragonEnvoys.tsv",
               "RelativeDocumentMoniker": "DragonKnightServer\\DragonEnvoys.tsv",
@@ -94,7 +128,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 5,
               "Title": "NpcPopulation.cs",
               "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\NpcPopulation.cs",
               "RelativeDocumentMoniker": "DragonKnightServer\\NpcPopulation.cs",
@@ -107,7 +141,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 7,
               "Title": "WorldPackets.Npcs.cs",
               "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\WorldPackets.Npcs.cs",
               "RelativeDocumentMoniker": "DragonKnightServer\\WorldPackets.Npcs.cs",
@@ -119,7 +153,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 6,
+              "DocumentIndex": 8,
               "Title": "CharacterRepository.Quests.cs",
               "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\CharacterRepository.Quests.cs",
               "RelativeDocumentMoniker": "DragonKnightServer\\CharacterRepository.Quests.cs",

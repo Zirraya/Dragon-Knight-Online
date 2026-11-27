@@ -32,6 +32,7 @@ CREATE TABLE characters
     quickbar VARBINARY(4096) NULL,
     silver INT NOT NULL DEFAULT 0,
     starter_egg_granted BOOLEAN NOT NULL DEFAULT FALSE,
+    starter_essence_granted BOOLEAN NOT NULL DEFAULT FALSE,
 
 
     level INT DEFAULT 1,
@@ -61,6 +62,9 @@ CREATE TABLE character_items
     slot SMALLINT UNSIGNED NOT NULL,
     item_id SMALLINT UNSIGNED NOT NULL,
     dragon_slot TINYINT UNSIGNED NULL,
+    dragon_growth TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    dragon_satiety TINYINT UNSIGNED NOT NULL DEFAULT 100,
+    dragon_satiety_updated TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
     backpack_slot SMALLINT UNSIGNED NULL,
     equipment_slot TINYINT UNSIGNED NULL,
     quantity SMALLINT UNSIGNED NOT NULL DEFAULT 1,

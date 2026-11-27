@@ -2,7 +2,29 @@ namespace DragonKnightServer;
 
 internal sealed record WorldQuest(int Id, ushort Level, int Giver, int Finisher, string Title, string Description,
     string Objective, int Reward, ushort Monster = 0, int KillCount = 0, string? TargetName = null,
-    int TargetX = 0, int TargetY = 0, bool SideQuest = false); // Нужно добваить повторяемые, квесты на сбор и поиск и сопровождение
+    int TargetX = 0, int TargetY = 0, bool SideQuest = false,
+    ushort RewardItem = 40015, ushort RewardItemCount = 1, int RewardExperience = 0,
+    IReadOnlyList<ushort>? RewardItemOptions = null)
+{
+    // Опыт ещё не записывается в персонажа, но значение уже входит в описание награды.
+    internal int EffectiveExperience => RewardExperience > 0 ? RewardExperience : Level * 100;
+
+    internal IReadOnlyList<ushort> RewardItems => RewardItemOptions is { Count: > 0 }
+        ? [RewardItem, .. RewardItemOptions]
+        : [RewardItem];
+
+    internal string RewardItemLabel => RewardItem switch
+    {
+        40015 => "Маленькое лекарство для драконов",
+        40022 => "Маленькое лекарство для исцеления крылатых драконов",
+        30006 => "Жемчужина защиты от огня I",
+        1712 => "Отметка торговой гильдии Поместья Радда",
+        1791 => "Лук ополчения Радда",
+        2585 => "Орден стражи Поместья Радда",
+        2586 => "Орден ученого Поместья Радда",
+        _ => $"предмет #{RewardItem}"
+    };
+}
 
 internal readonly record struct QuestProgress(int Kills, bool Completed);
 
@@ -84,8 +106,24 @@ internal static class WorldQuests
             "Одолейте царя горных вепрей, затем вернитесь к командиру стражи.", 150, 413, 1, "Царь горных вепрей", 216180, 152944)
     ];
 
+    private static WorldQuest ApplyAllianceReward(WorldQuest quest) => quest.Id switch
+    {
+        114001 => quest with { RewardItem = 54200, RewardExperience = 1002 },
+        900102 or 900103 => quest with { RewardItem = 40015 },
+        900104 or 900106 => quest with { RewardItem = 40022 },
+        900105 => quest with { RewardItem = 30006 },
+        900107 => quest with { RewardItem = 1712 },
+        910001 or 910002 or 910003 => quest with { RewardItem = 30006 },
+        910004 or 910005 or 910006 => quest with { RewardItem = 30016 },
+        910007 => quest with { RewardItem = 30026 },
+        910008 => quest with { RewardItem = 2585 },
+        910009 => quest with { RewardItem = 2586 },
+        9100010 => quest with { RewardItem = 1791 },
+        _ => quest
+    };
+
     internal static IReadOnlyList<WorldQuest> ForFaction(ushort faction) =>
-        faction == CharacterOrigins.Federation ? Federation : Alliance;
+        faction == CharacterOrigins.Federation ? Federation : Alliance.Select(ApplyAllianceReward).ToArray();
 
     internal static readonly IReadOnlyList<ShopItem> DragonEnvoyStock =
     [

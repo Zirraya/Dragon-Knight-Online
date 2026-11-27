@@ -20,6 +20,25 @@ internal static partial class WorldPackets
     private const int WalkingSpeed = 700;
     private const int ElvenDragonFlightSpeed = 1800;
     public static IReadOnlyList<ushort> DragonSkills { get; } = [6961];
+    private static readonly IReadOnlyDictionary<ushort, (ushort Template, string Name)> YoungDragonAppearances =
+        new Dictionary<ushort, (ushort, string)>
+        {
+            [CharacterRepository.ElvenDragonItem] = (6018, "Эльфийский дракон"),
+            [58503] = (7503, "Молодой Белый дракон"),
+            [58504] = (7504, "Молодой Черный дракон"),
+            [58505] = (7505, "Молодой Синий дракон"),
+            [58506] = (7506, "Молодой Золотой дракон"),
+            [58507] = (7507, "Молодой Красный дракон"),
+            [58508] = (7508, "Молодой Серебряный дракон"),
+            [58509] = (7509, "Молодой Бронзовый дракон"),
+            [41018] = (6011, "Молодой Красный дракон"),
+            [41019] = (6012, "Молодой Белый дракон"),
+            [41020] = (6013, "Молодой Синий дракон"),
+            [41021] = (6014, "Молодой Черный дракон"),
+            [41022] = (6015, "Молодой Бронзовый дракон"),
+            [41023] = (6016, "Молодой Серебряный дракон"),
+            [41024] = (6017, "Молодой Золотой дракон")
+        };
     private static readonly (ushort Id, int Value)[] BattleDragonAttributes =
     [
         (0, 85), (0x0D, 3000), (0x0F, 3000), (0x0E, 1500), (0x10, 1500), (0x0C, 100),
@@ -28,6 +47,14 @@ internal static partial class WorldPackets
         (0x1D, 150), (0x1E, 150), (0x1F, 100), (0x20, 15), (0x21, 15), (0x22, 15),
         (0x23, 15), (0x24, ElvenDragonFlightSpeed), (0x25, 0), (0x26, 0), (0x27, 0), (0x28, 0),
         (0x29, 0), (0x2A, 0), (0x2B, 0), (0x2C, 0), (0x2D, 0)
+    ];
+    private static readonly (ushort Id, int Value)[] YoungDragonAttributes =
+    [
+        (0x00, 10), (0x0C, 100), (0x0D, 3000), (0x0E, 100), (0x0F, 3000), (0x10, 100),
+        (0x11, 570), (0x12, 180), (0x13, 80), (0x14, 90),
+        (0x15, 0), (0x16, 0), (0x17, 0), (0x18, 0), (0x19, 85), (0x1A, 0),
+        (0x1B, 6), (0x1C, 6), (0x1D, 6), (0x1E, 6), (0x1F, 6),
+        (0x20, 2500), (0x21, 80), (0x22, 100)
     ];
 
     public static byte[][] CreateEntry(WorldCharacter character)
@@ -46,15 +73,7 @@ internal static partial class WorldPackets
             }),
             Build(Opcode.PlayerSpawn, writer => WriteSpawn(writer, character, position, equipment, tick)),
             Build(Opcode.PlayerStatus, writer => WriteStatus(writer, character, tick)),
-            Build(Opcode.PlayerAttributes, writer =>
-            {
-                WriteInt32(writer, character.Id);
-                WriteUInt16(writer, 5);
-                WriteVitalAttributes(writer, character);
-                WriteAttribute(writer, 0x24, WalkingSpeed);
-                // В 0x0D92 отметка времени записана в little-endian.
-                writer.Write(tick);
-            }),
+            CreatePlayerAttributes(character),
             Build(Opcode.InitialPlayerState, writer => WriteInitialState(writer, character)),
             .. CreateBackpackLayout(tick),
             CreateInventory(character.Id, character.Silver, character.Inventory, unchecked(tick + 1)),
@@ -81,6 +100,38 @@ internal static partial class WorldPackets
     {
         WriteInt32(writer, 0);
         WriteInt32(writer, Environment.TickCount);
+    });
+
+    internal static byte[] CreatePlayerStatus(WorldCharacter character) =>
+        Build(Opcode.PlayerStatus, writer => WriteStatus(writer, character, Environment.TickCount));
+
+    internal static byte[] CreatePlayerAttributes(WorldCharacter character) => Build(Opcode.PlayerAttributes, writer =>
+    {
+        WriteInt32(writer, character.Id);
+        WriteUInt16(writer, 5);
+        WriteVitalAttributes(writer, character);
+        WriteAttribute(writer, 0x24, WalkingSpeed);
+        // В 0x0D92 отметка времени записана в little-endian.
+        writer.Write(Environment.TickCount);
+    });
+
+    internal static byte[] CreatePlayerProgress(WorldCharacter character) => Build(Opcode.AttributeChange, writer =>
+    {
+        var stats = CharacterProgression.For(character.Template, character.Level);
+        WriteInt32(writer, character.Id);
+        WriteUInt16(writer, 10);
+        WriteAttribute(writer, 0, character.Level);
+        WriteAttribute(writer, 0x0D, character.HitPoints);
+        WriteAttribute(writer, 0x0E, character.Mana);
+        WriteAttribute(writer, 0x0F, stats.HitPoints);
+        WriteAttribute(writer, 0x10, stats.Mana);
+        WriteAttribute(writer, 0x11, stats.Strength);
+        WriteAttribute(writer, 0x12, stats.Constitution);
+        WriteAttribute(writer, 0x13, stats.Intellect);
+        WriteAttribute(writer, 0x14, stats.Potential);
+        WriteAttribute(writer, 0x18,
+            CharacterProgression.ExperienceWithinLevel(character.Experience, character.Level));
+        writer.Write(Environment.TickCount);
     });
 
     public static byte[] CreatePositionUpdate(int characterId, (int X, int Y, int Z) position, ushort movementMode,
@@ -152,11 +203,13 @@ internal static partial class WorldPackets
         LoginPackets.WriteString(writer, character.Name);
         WriteInt32(writer, character.Id);
 
+        var stats = CharacterProgression.For(character.Template, character.Level);
         (ushort Id, int Value)[] attributes =
         [
-            // Базовые характеристики персонажа 1-го уровня из клиентской таблицы Chainit.
-            (0, character.Level), (0x11, 3), (0x12, 5), (0x13, 2),
-            (0x14, 10), (0x15, 100), (0x16, 1), (0x17, 0), (0x18, character.Experience),
+            (0, character.Level), (0x11, stats.Strength), (0x12, stats.Constitution),
+            (0x13, stats.Intellect), (0x14, stats.Potential), (0x15, 100), (0x16, 1),
+            (0x17, 0),
+            (0x18, CharacterProgression.ExperienceWithinLevel(character.Experience, character.Level)),
             (0x19, 0), (0x1A, 0), (0x1B, 0), (0x1C, 0),
             (0x2B, 0), (0x2C, 0), (0x2D, 0), (0x2E, 0), (0x2F, 0)
         ];
@@ -263,9 +316,9 @@ internal static partial class WorldPackets
             writer.Write(instanceId);
             writer.Write(itemId);
             writer.Write(new byte[10]);
-            writer.Write(battleDragon ? 0 : 100);
+            writer.Write(battleDragon ? 0 : item!.DragonGrowth);
             writer.Write((ushort)(battleDragon ? 15 : 100));
-            writer.Write((ushort)100);
+            writer.Write((ushort)(battleDragon ? 100 : item!.DragonSatiety));
             writer.Write((ushort)(battleDragon ? 100 : 0));
             writer.Write((ushort)0);
             writer.Write((ushort)100);
@@ -293,12 +346,12 @@ internal static partial class WorldPackets
     private static int DragonItemInstanceId(int characterId, ushort slot) =>
         0x70000000 | ((characterId & 0x003FFFFF) << 6) | slot;
 
-    public static byte DragonSlotType(ushort itemId) => itemId switch
-    {
-        CharacterRepository.YoungSilverDragonItem => GrowingDragonType,
-        CharacterRepository.ElvenDragonItem => BattleDragonType,
-        _ => 0
-    };
+    public static byte DragonSlotType(ushort itemId) => itemId == CharacterRepository.ElvenDragonItem
+        ? BattleDragonType
+        : itemId == CharacterRepository.YoungSilverDragonItem
+            || itemId == CharacterRepository.StarterDragonEgg
+            || CharacterRepository.HatchlingDragonItems.Contains(itemId)
+            ? GrowingDragonType : (byte)0;
 
     public static byte[] CreateDragonSlots(int characterId, IEnumerable<CharacterItem> inventory, ushort? activeBattleItem = null) =>
         Build(Opcode.DragonSlots, writer =>
@@ -376,17 +429,27 @@ internal static partial class WorldPackets
             WriteInt32(writer, Environment.TickCount);
         });
 
-    public static byte[] CreateDragonSpawn(int actorId, (int X, int Y, int Z) position, bool mounted) =>
+    public static byte[] CreateDragonSpawn(int actorId, (int X, int Y, int Z) position, bool mounted,
+        ushort itemId = CharacterRepository.ElvenDragonItem) =>
         Build(Opcode.PlayerSpawn, writer =>
         {
             var dragonPosition = mounted ? position : (position.X + 175, position.Y + 125, position.Z);
-            WriteActorAppearance(writer, actorId, 0x25, dragonPosition, 0, mounted ? (ushort)6018 : (ushort)7508);
+            var appearance = YoungDragonAppearances.TryGetValue(itemId, out var selected)
+                ? selected : ((ushort)7508, "Молодой Серебряный дракон");
+            WriteActorAppearance(writer, actorId, 0x25, dragonPosition, 0, appearance.Item1);
             if (mounted)
-                WriteBattleDragonAttributes(writer);
+                WriteBattleDragonAttributes(writer, itemId);
             else
-                WriteActorVitals(writer, 15, 300, 300, 0);
+            {
+                bool youngDragon = CharacterRepository.HatchlingDragonItems.Contains(itemId)
+                    || itemId == CharacterRepository.YoungSilverDragonItem;
+                WriteActorVitals(writer, youngDragon ? 10 : 15,
+                    youngDragon ? 3000 : 300,
+                    youngDragon ? 3000 : 300,
+                    youngDragon ? 100 : 0);
+            }
 
-            WriteNamedSpawnTail(writer, mounted ? "Эльфийский дракон" : "Молодой Серебряный дракон", Environment.TickCount);
+            WriteNamedSpawnTail(writer, appearance.Item2, Environment.TickCount);
         });
 
     public static byte[] CreateDragonLink(int characterId, int dragonId, bool attach = true) =>
@@ -397,11 +460,11 @@ internal static partial class WorldPackets
             writer.Write(Environment.TickCount);
         });
 
-    public static byte[] CreateDragonAttributes(int dragonId) =>
+    public static byte[] CreateDragonAttributes(int dragonId, ushort itemId = CharacterRepository.ElvenDragonItem) =>
         Build(Opcode.DragonAttributes, writer =>
         {
             WriteInt32(writer, dragonId);
-            WriteBattleDragonAttributes(writer);
+            WriteBattleDragonAttributes(writer, itemId);
             writer.Write(new byte[6]);
             writer.Write(Environment.TickCount);
         });
@@ -460,6 +523,41 @@ internal static partial class WorldPackets
             writer.Write(remove);
             writer.Write(itemType);
             WriteUInt16(writer, result);
+        });
+
+    internal static byte[] CreateHatchOptions(int characterId, CharacterItem egg, ushort? sourceItem = null)
+    {
+        ushort[] choices = [58503, 58505, 58506, 58507, 58508, 58509];
+        return Build(Opcode.Unknown0D34, writer =>
+        {
+            WriteInt32(writer, DragonItemInstanceId(characterId, egg.Slot));
+            WriteInt32(writer, characterId);
+            WriteInt32(writer, sourceItem ?? CharacterRepository.StarterDragonEgg);
+            WriteUInt16(writer, checked((ushort)choices.Length));
+            foreach (ushort choice in choices)
+            {
+                WriteInt32(writer, choice);
+                WriteInt32(writer, 100);
+            }
+        });
+    }
+
+    internal static byte[] CreateDragonEvolutionWindow(int characterId, CharacterItem dragon)
+        => Build(Opcode.Unknown0D34, writer =>
+        {
+            // The client expects the two evolution-window actor identifiers
+            // used by the captured build before it accepts the 0x0943 reply.
+            WriteInt32(writer, unchecked((int)0x7000B78E));
+            WriteInt32(writer, unchecked((int)0x29A41676));
+            WriteInt32(writer, dragon.ItemId);
+            writer.Write(new byte[] { 0, 1, 0, 0, 0xA0, 0x3B, 0, 0, 0, 0x64 });
+        });
+
+    internal static byte[] CreateDragonEvolutionResult(int characterId, CharacterItem dragon)
+        => Build(Opcode.Unknown0D35, writer =>
+        {
+            WriteInt32(writer, unchecked((int)0x7000B78E));
+            WriteUInt16(writer, 0);
         });
 
     internal static byte[] RefreshDragonItem(CharacterItem item)
@@ -598,10 +696,12 @@ internal static partial class WorldPackets
         WriteInt32(writer, tick);
     }
 
-    private static void WriteBattleDragonAttributes(BinaryWriter writer)
+    private static void WriteBattleDragonAttributes(BinaryWriter writer, ushort itemId)
     {
-        WriteUInt16(writer, (ushort)BattleDragonAttributes.Length);
-        foreach (var (id, value) in BattleDragonAttributes)
+        var attributes = CharacterRepository.DragonContractItems.Contains(itemId)
+            ? YoungDragonAttributes : BattleDragonAttributes;
+        WriteUInt16(writer, (ushort)attributes.Length);
+        foreach (var (id, value) in attributes)
             WriteAttribute(writer, id, value);
     }
 

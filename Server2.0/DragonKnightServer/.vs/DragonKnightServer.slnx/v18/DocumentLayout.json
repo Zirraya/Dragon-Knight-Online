@@ -3,16 +3,16 @@
   "WorkspaceRootPath": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|c:\\projects\\dragon-knight-online\\server2.0\\dragonknightserver\\dragonknightserver\\worldquests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|solutionrelative:dragonknightserver\\worldquests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|c:\\projects\\dragon-knight-online\\server2.0\\dragonknightserver\\dragonknightserver\\characterrepository.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|solutionrelative:dragonknightserver\\characterrepository.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|c:\\projects\\dragon-knight-online\\server2.0\\dragonknightserver\\dragonknightserver\\characterorigins.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|solutionrelative:dragonknightserver\\characterorigins.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|c:\\projects\\dragon-knight-online\\server2.0\\dragonknightserver\\dragonknightserver\\worldquests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|solutionrelative:dragonknightserver\\worldquests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{1239FCE4-3F64-4639-E5CD-9CB264646AEE}|DragonKnightServer\\DragonKnightServer.csproj|c:\\projects\\dragon-knight-online\\server2.0\\dragonknightserver\\dragonknightserver\\alliancenpcs.tsv||{8B382828-6202-11D1-8870-0000F87579D2}",
@@ -46,24 +46,24 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 0,
+          "SelectedChildIndex": 3,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
               "Title": "CharacterRepository.cs",
               "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\CharacterRepository.cs",
               "RelativeDocumentMoniker": "DragonKnightServer\\CharacterRepository.cs",
               "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\CharacterRepository.cs",
               "RelativeToolTip": "DragonKnightServer\\CharacterRepository.cs",
-              "ViewState": "AgIAACgBAAAAAAAAAAAgwDUBAAACAAAAAAAAAA==",
+              "ViewState": "AgIAAEABAAAAAAAAAAAgwE0BAAACAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-11-26T09:09:45.322Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 2,
               "Title": "CharacterOrigins.cs",
               "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\CharacterOrigins.cs",
               "RelativeDocumentMoniker": "DragonKnightServer\\CharacterOrigins.cs",
@@ -71,8 +71,7 @@
               "RelativeToolTip": "DragonKnightServer\\CharacterOrigins.cs",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-11-26T09:09:36.796Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-11-26T09:09:36.796Z"
             },
             {
               "$type": "Document",
@@ -84,18 +83,17 @@
               "RelativeToolTip": "DragonKnightServer\\AllianceNpcs.tsv",
               "ViewState": "AgIAAMYAAAAAAAAAAAAAANQAAAAJAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2026-11-23T07:34:50.497Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-11-23T07:34:50.497Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 0,
               "Title": "WorldQuests.cs",
               "DocumentMoniker": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\WorldQuests.cs",
               "RelativeDocumentMoniker": "DragonKnightServer\\WorldQuests.cs",
               "ToolTip": "C:\\projects\\Dragon-Knight-Online\\Server2.0\\DragonKnightServer\\DragonKnightServer\\WorldQuests.cs",
               "RelativeToolTip": "DragonKnightServer\\WorldQuests.cs",
-              "ViewState": "AgIAADYAAAAAAAAAAAAmwE4AAAA2AAAAAAAAAA==",
+              "ViewState": "AgIAACAAAAAAAAAAAAA6wCgAAABUAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-11-23T06:28:43.557Z",
               "EditorCaption": ""
@@ -110,8 +108,7 @@
               "RelativeToolTip": "DragonKnightServer\\WorldCreatures.tsv",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAYAAAAFAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2026-11-23T06:41:55.416Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-11-23T06:41:55.416Z"
             },
             {
               "$type": "Document",
@@ -123,8 +120,7 @@
               "RelativeToolTip": "DragonKnightServer\\DragonEnvoys.tsv",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2026-11-23T07:34:18.306Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-11-23T07:34:18.306Z"
             },
             {
               "$type": "Document",
@@ -136,8 +132,7 @@
               "RelativeToolTip": "DragonKnightServer\\NpcPopulation.cs",
               "ViewState": "AgIAAAoAAAAAAAAAAAAQwCAAAAAJAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-11-23T07:34:06.972Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-11-23T07:34:06.972Z"
             },
             {
               "$type": "Document",

@@ -100,8 +100,9 @@ internal sealed partial class WorldSession
         }
 
         if (npc.IsDragonEnvoy)
-            return action == 0
-                ? [WorldPackets.CreateNpcDialog(npcId,
+        {
+            if (action == 0)
+                return [WorldPackets.CreateNpcDialog(npcId,
                     "Приветствую, Харпия. Я Посланник Драконов, драконьи услуги. Чем могу быть полезен?",
                     [
                         ((ushort)0, "Изучить навыки дракона"),
@@ -110,8 +111,14 @@ internal sealed partial class WorldSession
                         ((ushort)0, "Показать товары"),
                         ((ushort)0, "Воскресить дракона"),
                         ((ushort)0, "Ничего, прощай")
-                    ])]
-                : [WorldPackets.CreateNpcShop(npcId, npc.InfoId)];
+                    ])];
+
+            if (selection == 3)
+                return [WorldPackets.CreateNpcShop(npcId, npc.InfoId)];
+            if (selection == 2)
+                return DragonEvolutionWindowPackets();
+            return [WorldPackets.CloseNpcDialog()];
+        }
 
         int rawId = npc.Id - NpcPopulation.IdOffset;
         bool talkedQuest = MarkTalkQuest(rawId);
@@ -160,6 +167,26 @@ internal sealed partial class WorldSession
                 WorldPackets.CreateQuestDetails(quest, progress, 2)];
 
         return [WorldPackets.CreateQuestDetails(quest, progress, 1)];
+    }
+
+    private byte[][] DragonEvolutionWindowPackets()
+    {
+        var dragon = inventory.Values.FirstOrDefault(item => item.DragonGrowth >= 100
+            && CharacterRepository.DragonEvolutionItems.ContainsKey(item.ItemId));
+        if (dragon is null)
+        {
+            Console.WriteLine("Эволюция: нет детёныша с ростом 100 в инвентаре.");
+            return [WorldPackets.CloseNpcDialog()];
+        }
+
+        int index = dragon.BackpackIndex;
+        return [WorldPackets.CloseNpcDialog(),
+            WorldPackets.CreateDragonSlotResult(
+                (byte)(WorldPackets.FirstBackpackPage + index / WorldPackets.BackpackPageSize),
+                (ushort)(index % WorldPackets.BackpackPageSize), dragon.DragonSlot ?? 0,
+                remove: true, itemType: WorldPackets.GrowingDragonType),
+            WorldPackets.CreateDragonSlots(character.Id, []),
+            WorldPackets.CreateDragonEvolutionWindow(character.Id, dragon)];
     }
 
     private byte QuestMarkerState(int rawNpcId)
@@ -225,10 +252,21 @@ internal sealed partial class WorldSession
         {
             if (!quests.ContainsKey(quest.Id) || progress.Completed || !IsQuestReady(quest, progress))
                 return [];
-            var newSilver = CharacterRepository.TryCompleteQuest(character.Id, quest);
-            if (newSilver is not { } balance)
+            ushort rewardSelection = packet.Length >= 14
+                ? BinaryPrimitives.ReadUInt16BigEndian(packet[12..])
+                : (ushort)0;
+            var rewardItems = quest.RewardItems;
+            if (rewardSelection >= rewardItems.Count)
                 return [];
-            silver = balance;
+            var completion = CharacterRepository.TryCompleteQuest(character.Id, quest,
+                WorldPackets.BackpackPageSize * WorldPackets.BackpackPageCount,
+                rewardItems[rewardSelection]);
+            if (completion is not { } result)
+                return [];
+            silver = result.Silver;
+            if (result.Item is { } rewardItem)
+                inventory[rewardItem.Slot] = rewardItem;
+            var experiencePackets = GainExperience(quest.EffectiveExperience);
             quests[quest.Id] = progress with { Completed = true };
             var clearedMarkers = new List<byte[]>
             {
@@ -236,9 +274,9 @@ internal sealed partial class WorldSession
             };
             if (quest.Finisher != quest.Giver)
                 clearedMarkers.Add(WorldPackets.CreateQuestMarker(NpcPopulation.IdOffset + quest.Finisher, 0));
-            return [WorldPackets.CreateQuestOffer(quest, quests[quest.Id], completed: true),
-                WorldPackets.CreateQuestDetails(quest, quests[quest.Id], 2),
-                WorldPackets.CreateBackpackUpdate(character.Id, silver),
+            return [WorldPackets.CreateBackpackUpdate(character.Id, silver,
+                    result.Item is { } item ? [(item.BackpackIndex, (CharacterItem?)item)] : []),
+                .. experiencePackets,
                 .. QuestJournalPackets(),
                 .. clearedMarkers,
                 .. QuestStatePackets(),
@@ -287,7 +325,7 @@ internal sealed partial class WorldSession
 
     internal bool IsQuestUnlocked(WorldQuest quest)
     {
-        if (quest.Level > character.Level)
+        if (quest.Level > level)
             return false;
         if (quest.SideQuest)
             return true;

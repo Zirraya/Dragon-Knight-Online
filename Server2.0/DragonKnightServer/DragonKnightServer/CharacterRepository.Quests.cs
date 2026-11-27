@@ -5,6 +5,7 @@ namespace DragonKnightServer.Database;
 
 public partial class CharacterRepository
 {
+    internal readonly record struct QuestCompletionResult(int Silver, CharacterItem? Item);
     private static bool questTableReady;
 
     private static void EnsureQuestTable(MySqlConnection db)
@@ -55,6 +56,47 @@ public partial class CharacterRepository
         InsertBackpackItem(cmd, characterId, items, StarterDragonEgg, cell, 1);
         cmd.Parameters.Clear();
         cmd.CommandText = "UPDATE characters SET starter_egg_granted = TRUE WHERE id = @id";
+        cmd.Parameters.AddWithValue("@id", characterId);
+        cmd.ExecuteNonQuery();
+    }
+
+    internal static void GrantStarterDragonEssence(MySqlCommand cmd, int characterId)
+    {
+        cmd.Parameters.Clear();
+        cmd.CommandText = "SELECT starter_essence_granted FROM characters WHERE id = @id FOR UPDATE";
+        cmd.Parameters.AddWithValue("@id", characterId);
+        if (Convert.ToBoolean(cmd.ExecuteScalar()))
+            return;
+
+        var items = ReadInventory(cmd, characterId, forUpdate: true);
+        int quantity = items.Where(item => item.ItemId == StarterDragonEssenceItem)
+            .Sum(item => item.Quantity);
+        int missing = Math.Max(0, StarterDragonEssenceQuantity - quantity);
+        if (missing == 0)
+        {
+            MarkStarterDragonEssenceGranted(cmd, characterId);
+            return;
+        }
+
+        var stack = items.FirstOrDefault(item => item.ItemId == StarterDragonEssenceItem
+            && item.Quantity <= ushort.MaxValue - missing);
+        if (stack is not null)
+        {
+            UpdateItemQuantity(cmd, characterId, stack with { Quantity = (ushort)(stack.Quantity + missing) });
+            return;
+        }
+
+        if (FindEmptyBackpackCell(items) is not { } cell)
+            return;
+
+        InsertBackpackItem(cmd, characterId, items, StarterDragonEssenceItem, cell, (ushort)missing);
+        MarkStarterDragonEssenceGranted(cmd, characterId);
+    }
+
+    private static void MarkStarterDragonEssenceGranted(MySqlCommand cmd, int characterId)
+    {
+        cmd.Parameters.Clear();
+        cmd.CommandText = "UPDATE characters SET starter_essence_granted = TRUE WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", characterId);
         cmd.ExecuteNonQuery();
     }
@@ -125,7 +167,8 @@ public partial class CharacterRepository
         }
     }
 
-    internal static int? TryCompleteQuest(int characterId, WorldQuest quest)
+    internal static QuestCompletionResult? TryCompleteQuest(int characterId, WorldQuest quest, int backpackCapacity,
+        ushort rewardItem)
     {
         try
         {
@@ -145,10 +188,30 @@ public partial class CharacterRepository
             if (cmd.ExecuteNonQuery() != 1)
                 return null;
 
-            int newBalance = balance + quest.Reward;
+            CharacterItem? rewardInventoryItem = null;
+            if (rewardItem != 0 && quest.RewardItemCount != 0)
+            {
+                var inventory = ReadInventory(cmd, characterId, forUpdate: true);
+                var stack = inventory.FirstOrDefault(item => item.ItemId == rewardItem
+                    && item.BackpackIndex < backpackCapacity && item.Quantity <= ushort.MaxValue - quest.RewardItemCount);
+                if (stack is not null)
+                {
+                    rewardInventoryItem = stack with { Quantity = (ushort)(stack.Quantity + quest.RewardItemCount) };
+                    UpdateItemQuantity(cmd, characterId, rewardInventoryItem);
+                }
+                else
+                {
+                    if (FindEmptyBackpackCell(inventory) is not { } cell)
+                        return null;
+                    rewardInventoryItem = InsertBackpackItem(cmd, characterId, inventory, rewardItem, cell,
+                        quest.RewardItemCount);
+                }
+            }
+
+            int newBalance = checked(balance + quest.Reward);
             WriteSilver(cmd, characterId, newBalance);
             transaction.Commit();
-            return newBalance;
+            return new QuestCompletionResult(newBalance, rewardInventoryItem);
         }
         catch (MySqlException ex)
         {

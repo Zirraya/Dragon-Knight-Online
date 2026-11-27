@@ -80,5 +80,33 @@ public enum Opcode : ushort
 
     PlayerStatus = 0x0C01,
 
-    Move = 0x080B
+    Move = 0x080B,
+
+    Unknown0401 = 0x0401,
+    Unknown0414 = 0x0414,
+    FeedDragon = 0x0BB9,
+    Unknown084E = 0x084E,
+    Unknown0943 = 0x0943,
+    Unknown09A5 = 0x09A5,
+    Unknown0C15 = 0x0C15,
+    DragonGrowthUpdate = 0x0C66,
+    Unknown0C1A = 0x0C1A,
+    Unknown0C7A = 0x0C7A,
+    Unknown0D34 = 0x0D34,
+    Unknown0D35 = 0x0D35,
+    Unknown0DA5 = 0x0DA5,
+    Unknown0DA7 = 0x0DA7,
+    Unknown0DCC = 0x0DCC,
+    Unknown0DCD = 0x0DCD,
+    Unknown0EBD = 0x0EBD,
+    Unknown0F22 = 0x0F22,
+    Unknown0FF0 = 0x0FF0,
+    Unknown1069 = 0x1069,
+    Unknown10CB = 0x10CB,
+    Unknown145B = 0x145B,
+    Unknown1461 = 0x1461,
+    Unknown1496 = 0x1496,
+    Unknown14AC = 0x14AC,
+    Unknown14CF = 0x14CF,
+    Unknown7F01 = 0x7F01
 }
